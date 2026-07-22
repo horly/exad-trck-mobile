@@ -1222,37 +1222,100 @@ class _SelectedVehiclePanel extends StatelessWidget {
               ],
             ),
             const Divider(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onDetails,
-                    icon: const Icon(Icons.info_outline),
-                    label: Text(context.tr('details')),
+            SizedBox(
+              height: 46,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _VehicleActionButton(
+                      onPressed: onDetails,
+                      icon: Icons.info_outline,
+                      label: context.tr('details'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: onTrips,
-                    icon: const Icon(Icons.alt_route),
-                    label: Text(context.tr('trips')),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _VehicleActionButton(
+                      onPressed: onTrips,
+                      icon: Icons.alt_route,
+                      label: context.tr('trips'),
+                      emphasized: true,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: onEvents,
-                    icon: const Icon(Icons.notifications_outlined),
-                    label: Text(context.tr('events')),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _VehicleActionButton(
+                      onPressed: onEvents,
+                      icon: Icons.notifications_outlined,
+                      label: context.tr('events'),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+}
+
+class _VehicleActionButton extends StatelessWidget {
+  const _VehicleActionButton({
+    required this.onPressed,
+    required this.icon,
+    required this.label,
+    this.emphasized = false,
+  });
+
+  final VoidCallback onPressed;
+  final IconData icon;
+  final String label;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = ButtonStyle(
+      minimumSize: const WidgetStatePropertyAll(Size(0, 46)),
+      padding: const WidgetStatePropertyAll(
+        EdgeInsets.symmetric(horizontal: 7),
+      ),
+      visualDensity: VisualDensity.compact,
+      shape: const WidgetStatePropertyAll(
+        RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(8)),
+        ),
+      ),
+    );
+    final content = Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 17),
+        const SizedBox(width: 5),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              maxLines: 1,
+              softWrap: false,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    if (emphasized) {
+      return FilledButton.tonal(
+        onPressed: onPressed,
+        style: style,
+        child: content,
+      );
+    }
+
+    return OutlinedButton(onPressed: onPressed, style: style, child: content);
   }
 }
 
