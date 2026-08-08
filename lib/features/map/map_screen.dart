@@ -537,38 +537,47 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             onClose: () => setState(() => panelVisible = false),
           ),
         ),
-        AnimatedPositioned(
-          duration: const Duration(milliseconds: 220),
-          left: panelVisible ? panelWidth + 24 : 16,
-          top: 16,
-          child: _MapIconButton(
-            tooltip: panelVisible
-                ? context.tr('hide_map_menu')
-                : context.tr('show_map_menu'),
-            icon: panelVisible ? Icons.chevron_left : Icons.menu,
-            onPressed: () => setState(() => panelVisible = !panelVisible),
+        if (!compact || !panelVisible)
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            left: panelVisible ? panelWidth + 24 : 16,
+            top: 16,
+            child: _MapIconButton(
+              tooltip: panelVisible
+                  ? context.tr('hide_map_menu')
+                  : context.tr('show_map_menu'),
+              icon: panelVisible ? Icons.chevron_left : Icons.menu,
+              onPressed: () => setState(() {
+                final showPanel = !panelVisible;
+                panelVisible = showPanel;
+                if (compact && showPanel) {
+                  selectedVehicle = null;
+                  selectedTrip = null;
+                }
+              }),
+            ),
           ),
-        ),
-        Positioned(
-          right: 16,
-          top: 16,
-          child: Column(
-            children: [
-              _MapIconButton(
-                tooltip: context.tr('my_location'),
-                icon: Icons.my_location,
-                onPressed: _centerOnUser,
-              ),
-              const SizedBox(height: 10),
-              _MapIconButton(
-                tooltip: context.tr('view_all'),
-                icon: Icons.center_focus_strong,
-                onPressed: () => _fitVehicles(vehicles),
-              ),
-            ],
+        if (!compact || !panelVisible)
+          Positioned(
+            right: 16,
+            top: 16,
+            child: Column(
+              children: [
+                _MapIconButton(
+                  tooltip: context.tr('my_location'),
+                  icon: Icons.my_location,
+                  onPressed: _centerOnUser,
+                ),
+                const SizedBox(height: 10),
+                _MapIconButton(
+                  tooltip: context.tr('view_all'),
+                  icon: Icons.center_focus_strong,
+                  onPressed: () => _fitVehicles(vehicles),
+                ),
+              ],
+            ),
           ),
-        ),
-        if (selectedVehicle != null)
+        if (selectedVehicle != null && (!compact || !panelVisible))
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             left: selectedPanelLeft,
@@ -1002,7 +1011,11 @@ class _VehicleMapPanel extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: Column(
               children: [
-                _MapSummary(vehicles: summaryVehicles),
+                _MapStatusFilters(
+                  vehicles: summaryVehicles,
+                  selectedStatus: statusFilter,
+                  onSelected: onStatusChanged,
+                ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: searchController,
@@ -1012,41 +1025,6 @@ class _VehicleMapPanel extends StatelessWidget {
                     prefixIcon: const Icon(Icons.search),
                     isDense: true,
                   ),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                  initialValue: statusFilter,
-                  isExpanded: true,
-                  decoration: InputDecoration(
-                    labelText: context.tr('status'),
-                    prefixIcon: const Icon(Icons.tune),
-                    isDense: true,
-                  ),
-                  items: [
-                    DropdownMenuItem(
-                      value: 'all',
-                      child: Text(context.tr('all')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'online',
-                      child: Text(context.tr('online')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'moving',
-                      child: Text(context.tr('moving_now')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'parking',
-                      child: Text(context.tr('parking')),
-                    ),
-                    DropdownMenuItem(
-                      value: 'offline',
-                      child: Text(context.tr('offline')),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) onStatusChanged(value);
-                  },
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -1119,61 +1097,112 @@ class _VehicleMapPanel extends StatelessWidget {
   }
 }
 
-class _MapSummary extends StatelessWidget {
-  const _MapSummary({required this.vehicles});
+class _MapStatusFilters extends StatelessWidget {
+  const _MapStatusFilters({
+    required this.vehicles,
+    required this.selectedStatus,
+    required this.onSelected,
+  });
 
   final List<VehicleData> vehicles;
+  final String selectedStatus;
+  final ValueChanged<String> onSelected;
 
   @override
   Widget build(BuildContext context) {
     final stats = [
-      (context.tr('all'), vehicles.length, const Color(0xFF2563EB)),
       (
+        'all',
+        context.tr('all'),
+        Icons.directions_car_filled_outlined,
+        vehicles.length,
+        const Color(0xFF2563EB),
+      ),
+      (
+        'online',
         context.tr('online'),
+        Icons.wifi,
         vehicles.where((vehicle) => vehicle.isOnline).length,
         const Color(0xFF07966F),
       ),
       (
-        context.tr('moving'),
+        'moving',
+        context.tr('moving_now'),
+        Icons.navigation_rounded,
         vehicles.where((vehicle) => vehicle.isMoving).length,
         const Color(0xFF229BD8),
       ),
       (
+        'parking',
+        context.tr('parking'),
+        Icons.local_parking_rounded,
+        vehicles.where((vehicle) => vehicle.isParking).length,
+        const Color(0xFF7C3AED),
+      ),
+      (
+        'offline',
         context.tr('offline'),
+        Icons.wifi_off_rounded,
         vehicles.where((vehicle) => !vehicle.isOnline).length,
         const Color(0xFFE98A00),
       ),
     ];
 
     return Row(
-      children: stats.map((stat) {
+      children: stats.indexed.map((entry) {
+        final index = entry.$1;
+        final stat = entry.$2;
+        final selected = selectedStatus == stat.$1;
+
         return Expanded(
-          child: Tooltip(
-            message: stat.$1,
-            child: Container(
-              margin: EdgeInsets.only(right: stat == stats.last ? 0 : 6),
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                color: stat.$3.withValues(alpha: .08),
-                border: Border.all(color: stat.$3.withValues(alpha: .2)),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    '${stat.$2}',
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleMedium?.copyWith(color: stat.$3),
+          child: Padding(
+            padding: EdgeInsets.only(right: index == stats.length - 1 ? 0 : 4),
+            child: Semantics(
+              button: true,
+              selected: selected,
+              label: '${stat.$2}: ${stat.$4}',
+              child: Tooltip(
+                message: stat.$2,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => onSelected(stat.$1),
+                    borderRadius: BorderRadius.circular(8),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        color: stat.$5.withValues(alpha: selected ? .16 : .06),
+                        border: Border.all(
+                          color: stat.$5.withValues(
+                            alpha: selected ? .65 : .18,
+                          ),
+                          width: selected ? 1.5 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(stat.$3, size: 18, color: stat.$5),
+                            const SizedBox(width: 3),
+                            Text(
+                              '${stat.$4}',
+                              style: Theme.of(context).textTheme.labelMedium
+                                  ?.copyWith(
+                                    color: stat.$5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    stat.$1,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelSmall,
-                  ),
-                ],
+                ),
               ),
             ),
           ),
