@@ -12,15 +12,22 @@ class SuperadminDashboardScreen extends StatelessWidget {
     super.key,
     required this.session,
     required this.onOpenVehicles,
+    required this.onOpenOnlineVehicles,
+    required this.onOpenAlerts,
+    required this.onOpenVehicleMap,
   });
 
   final SessionController session;
   final VoidCallback onOpenVehicles;
+  final VoidCallback onOpenOnlineVehicles;
+  final VoidCallback onOpenAlerts;
+  final ValueChanged<VehicleData>? onOpenVehicleMap;
 
   @override
   Widget build(BuildContext context) {
     final data = session.dashboard;
     final fleetGroups = data.fleetDistribution;
+    final fleetDistributionKey = GlobalKey();
     return RefreshIndicator(
       onRefresh: session.refreshWorkspace,
       child: ListView(
@@ -93,42 +100,58 @@ class SuperadminDashboardScreen extends StatelessWidget {
                 value: data.totalFleets,
                 icon: Icons.local_shipping_outlined,
                 color: const Color(0xFF1D4ED8),
+                onTap: () {
+                  final target = fleetDistributionKey.currentContext;
+                  if (target != null) {
+                    Scrollable.ensureVisible(
+                      target,
+                      duration: const Duration(milliseconds: 350),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                },
               ),
               MetricTile(
                 label: context.tr('vehicles'),
                 value: data.totalVehicles,
                 icon: Icons.directions_car_filled_outlined,
                 color: session.branding.accent,
+                onTap: onOpenVehicles,
               ),
               MetricTile(
                 label: context.tr('online'),
                 value: data.onlineVehicles,
                 icon: Icons.signal_cellular_alt,
                 color: AppTheme.success,
+                onTap: onOpenOnlineVehicles,
               ),
               MetricTile(
                 label: context.tr('attention'),
                 value: data.attentionVehicles,
                 icon: Icons.warning_amber_rounded,
                 color: AppTheme.danger,
+                onTap: onOpenAlerts,
               ),
             ],
           ),
           const SizedBox(height: 22),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  context.tr('global_fleet_distribution'),
-                  style: Theme.of(context).textTheme.titleLarge,
+          Container(
+            key: fleetDistributionKey,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    context.tr('global_fleet_distribution'),
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                 ),
-              ),
-              IconButton(
-                tooltip: context.tr('view_all'),
-                onPressed: onOpenVehicles,
-                icon: const Icon(Icons.arrow_forward),
-              ),
-            ],
+                IconButton(
+                  tooltip: context.tr('view_all'),
+                  onPressed: onOpenVehicles,
+                  icon: const Icon(Icons.arrow_forward),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 10),
           SectionPanel(
@@ -158,25 +181,27 @@ class SuperadminDashboardScreen extends StatelessWidget {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 10),
-          SectionPanel(
-            child: data.vehicles.isEmpty
-                ? EmptyState(
-                    icon: Icons.directions_car_outlined,
-                    message: context.tr('no_vehicle'),
-                  )
-                : Column(
-                    children: [
-                      for (var i = 0; i < data.vehicles.length; i++) ...[
-                        VehicleRow(
-                          vehicle: data.vehicles[i],
-                          onTap: onOpenVehicles,
-                        ),
-                        if (i < data.vehicles.length - 1)
-                          const Divider(height: 1),
-                      ],
-                    ],
+          if (data.vehicles.isEmpty)
+            SectionPanel(
+              child: EmptyState(
+                icon: Icons.directions_car_outlined,
+                message: context.tr('no_vehicle'),
+              ),
+            )
+          else
+            Column(
+              children: [
+                for (var i = 0; i < data.vehicles.length; i++) ...[
+                  CorporateVehicleRow(
+                    vehicle: data.vehicles[i],
+                    onTap: onOpenVehicleMap == null
+                        ? null
+                        : () => onOpenVehicleMap!(data.vehicles[i]),
                   ),
-          ),
+                  if (i < data.vehicles.length - 1) const SizedBox(height: 8),
+                ],
+              ],
+            ),
         ],
       ),
     );

@@ -135,11 +135,11 @@ class SessionController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refreshWorkspace() async {
+  Future<void> refreshWorkspace({bool silent = false}) async {
     if (workspaceLoading) return;
     workspaceLoading = true;
     message = null;
-    notifyListeners();
+    if (!silent) notifyListeners();
     try {
       await _loadWorkspaceData();
     } on ApiException catch (error) {

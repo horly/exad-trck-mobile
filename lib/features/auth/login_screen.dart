@@ -134,9 +134,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               constraints.maxHeight -
                               (constraints.maxHeight < 700 ? 248 : 300),
                         ),
-                        decoration: const BoxDecoration(
-                          color: AppTheme.background,
-                          borderRadius: BorderRadius.vertical(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).scaffoldBackgroundColor,
+                          borderRadius: const BorderRadius.vertical(
                             top: Radius.circular(8),
                           ),
                         ),

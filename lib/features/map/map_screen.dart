@@ -12,11 +12,35 @@ import '../../core/session/session_controller.dart';
 import '../../shared/widgets/ui_components.dart';
 import 'map_vehicle_sheets.dart';
 
+const _darkMapStyle = '''[
+  {"elementType":"geometry","stylers":[{"color":"#172033"}]},
+  {"elementType":"labels.icon","stylers":[{"visibility":"off"}]},
+  {"elementType":"labels.text.fill","stylers":[{"color":"#A7B3C8"}]},
+  {"elementType":"labels.text.stroke","stylers":[{"color":"#172033"}]},
+  {"featureType":"administrative","elementType":"geometry.stroke","stylers":[{"color":"#36445D"}]},
+  {"featureType":"poi","elementType":"geometry","stylers":[{"color":"#1E293B"}]},
+  {"featureType":"poi.park","elementType":"geometry","stylers":[{"color":"#16352F"}]},
+  {"featureType":"road","elementType":"geometry","stylers":[{"color":"#29364B"}]},
+  {"featureType":"road","elementType":"geometry.stroke","stylers":[{"color":"#111827"}]},
+  {"featureType":"road.highway","elementType":"geometry","stylers":[{"color":"#3A4A65"}]},
+  {"featureType":"transit","elementType":"geometry","stylers":[{"color":"#243044"}]},
+  {"featureType":"water","elementType":"geometry","stylers":[{"color":"#081426"}]},
+  {"featureType":"water","elementType":"labels.text.fill","stylers":[{"color":"#64748B"}]}
+]''';
+
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key, required this.session, required this.active});
+  const MapScreen({
+    super.key,
+    required this.session,
+    required this.active,
+    this.focusVehicle,
+    this.focusRequestId = 0,
+  });
 
   final SessionController session;
   final bool active;
+  final VehicleData? focusVehicle;
+  final int focusRequestId;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -45,6 +69,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   bool refreshing = false;
   DateTime? lastUpdatedAt;
   DateTime? lastCameraFollowAt;
+  int handledFocusRequestId = -1;
 
   List<VehicleData> get positionedVehicles => liveVehicles
       .where((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
@@ -76,18 +101,27 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     _seedDisplayedPositions(liveVehicles);
     unawaited(_loadMarkerIcons());
     if (widget.active) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _startLiveRefresh());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startLiveRefresh();
+        _handleFocusRequest();
+      });
     }
   }
 
   @override
   void didUpdateWidget(covariant MapScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.active == widget.active) return;
-    if (widget.active) {
-      _startLiveRefresh();
-    } else {
-      refreshTimer?.cancel();
+    if (oldWidget.active != widget.active) {
+      if (widget.active) {
+        _startLiveRefresh();
+      } else {
+        refreshTimer?.cancel();
+      }
+    }
+    if (widget.active && oldWidget.focusRequestId != widget.focusRequestId) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _handleFocusRequest(),
+      );
     }
   }
 
@@ -168,6 +202,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       lastUpdatedAt = DateTime.now();
     });
     _ensureAnimationTicker();
+    _handleFocusRequest();
   }
 
   void _seedDisplayedPositions(List<VehicleData> vehicles) {
@@ -488,6 +523,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       children: [
         Positioned.fill(
           child: GoogleMap(
+            style: Theme.of(context).brightness == Brightness.dark
+                ? _darkMapStyle
+                : null,
             initialCameraPosition: CameraPosition(
               target: LatLng(
                 vehicles.first.latitude!,
@@ -504,6 +542,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             compassEnabled: true,
             onMapCreated: (controller) {
               mapController = controller;
+              _handleFocusRequest();
             },
           ),
         ),
@@ -762,6 +801,43 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     );
   }
 
+  void _handleFocusRequest() {
+    final requested = widget.focusVehicle;
+    if (!mounted ||
+        !widget.active ||
+        widget.focusRequestId <= handledFocusRequestId) {
+      return;
+    }
+
+    if (requested == null) {
+      if (mapController == null) return;
+      setState(() {
+        selectedVehicle = null;
+        selectedTrip = null;
+        panelVisible = true;
+      });
+      handledFocusRequestId = widget.focusRequestId;
+      unawaited(_fitVehicles(positionedVehicles));
+      return;
+    }
+
+    final vehicle = liveVehicles
+        .where((item) => item.id == requested.id)
+        .firstOrNull;
+    final focusVehicle = vehicle ?? requested;
+    if (focusVehicle.latitude == null || focusVehicle.longitude == null) {
+      return;
+    }
+
+    _selectVehicle(
+      focusVehicle,
+      compact: MediaQuery.sizeOf(context).width < 720,
+    );
+    if (mapController != null) {
+      handledFocusRequestId = widget.focusRequestId;
+    }
+  }
+
   void _showTrip(VehicleTripData trip) {
     if (trip.coordinates.isEmpty) return;
     setState(() => selectedTrip = trip);
@@ -976,7 +1052,7 @@ class _VehicleMapPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       elevation: 3,
       shadowColor: const Color(0x220F172A),
       borderRadius: BorderRadius.circular(8),
@@ -1058,25 +1134,16 @@ class _VehicleMapPanel extends StatelessWidget {
                     message: context.tr('no_search_result'),
                   )
                 : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
                     itemCount: vehicles.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final vehicle = vehicles[index];
                       final selected = vehicle.id == selectedVehicle?.id;
-                      return DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? Theme.of(
-                                  context,
-                                ).colorScheme.secondary.withValues(alpha: .07)
-                              : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: VehicleRow(
-                          vehicle: vehicle,
-                          onTap: () => onSelect(vehicle),
-                        ),
+                      return CorporateVehicleRow(
+                        vehicle: vehicle,
+                        selected: selected,
+                        onTap: () => onSelect(vehicle),
                       );
                     },
                   ),
@@ -1230,7 +1297,7 @@ class _SelectedVehiclePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       elevation: 4,
       shadowColor: const Color(0x330F172A),
       borderRadius: BorderRadius.circular(8),
@@ -1304,6 +1371,8 @@ class _VehicleActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final style = ButtonStyle(
       minimumSize: const WidgetStatePropertyAll(Size(0, 46)),
       padding: const WidgetStatePropertyAll(
@@ -1313,6 +1382,16 @@ class _VehicleActionButton extends StatelessWidget {
       shape: const WidgetStatePropertyAll(
         RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(8)),
+        ),
+      ),
+      foregroundColor: WidgetStatePropertyAll(
+        dark ? scheme.onSurface : scheme.primary,
+      ),
+      side: WidgetStatePropertyAll(
+        BorderSide(
+          color: dark
+              ? scheme.onSurfaceVariant.withValues(alpha: .75)
+              : Theme.of(context).dividerColor,
         ),
       ),
     );
@@ -1339,7 +1418,13 @@ class _VehicleActionButton extends StatelessWidget {
     if (emphasized) {
       return FilledButton.tonal(
         onPressed: onPressed,
-        style: style,
+        style: style.copyWith(
+          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          backgroundColor: WidgetStatePropertyAll(
+            dark ? const Color(0xFF312E81) : scheme.primary,
+          ),
+          side: const WidgetStatePropertyAll(BorderSide.none),
+        ),
         child: content,
       );
     }
@@ -1362,7 +1447,7 @@ class _MapIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       elevation: 3,
       borderRadius: BorderRadius.circular(8),
       child: IconButton(

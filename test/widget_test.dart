@@ -2,7 +2,11 @@ import 'package:exad_tracking_mobile/app.dart';
 import 'package:exad_tracking_mobile/core/localization/app_localizations.dart';
 import 'package:exad_tracking_mobile/core/models/app_models.dart';
 import 'package:exad_tracking_mobile/core/session/session_controller.dart';
+import 'package:exad_tracking_mobile/features/dashboard/superadmin_dashboard_screen.dart';
+import 'package:exad_tracking_mobile/features/vehicles/vehicles_screen.dart';
+import 'package:exad_tracking_mobile/shared/widgets/ui_components.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -48,6 +52,7 @@ void main() {
     expect(find.text('Bonjour Admin'), findsOneWidget);
     expect(find.text('EXAD CARS · EX-CRS'), findsOneWidget);
     expect(find.byIcon(Icons.dashboard), findsOneWidget);
+    expect(find.widgetWithText(Badge, '1'), findsWidgets);
 
     await tester.tap(find.text('Véhicules').last);
     await tester.pumpAndSettle();
@@ -69,6 +74,137 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Répartition des flottes'), findsOneWidget);
     expect(find.byIcon(Icons.admin_panel_settings), findsOneWidget);
+  });
+
+  testWidgets('demande l’ouverture de la carte au clic sur un véhicule', (
+    tester,
+  ) async {
+    final session = _session(role: 'admin');
+    VehicleData? requestedVehicle;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: Scaffold(
+          body: VehiclesScreen(
+            session: session,
+            onOpenMap: (vehicle) => requestedVehicle = vehicle,
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Toyota Hiace'));
+    await tester.pump();
+
+    expect(requestedVehicle?.id, 1);
+    expect(find.byType(BottomSheet), findsNothing);
+  });
+
+  testWidgets('ouvre la carte depuis l’activité du parc', (tester) async {
+    final session = _session(role: 'superadmin');
+    VehicleData? requestedVehicle;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: Scaffold(
+          body: SuperadminDashboardScreen(
+            session: session,
+            onOpenVehicles: () {},
+            onOpenOnlineVehicles: () {},
+            onOpenAlerts: () {},
+            onOpenVehicleMap: (vehicle) => requestedVehicle = vehicle,
+          ),
+        ),
+      ),
+    );
+
+    await tester.scrollUntilVisible(
+      find.text('Toyota Hiace'),
+      500,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Toyota Hiace'));
+    await tester.pump();
+
+    expect(requestedVehicle?.id, 1);
+  });
+
+  testWidgets('rend un indicateur de dashboard cliquable', (tester) async {
+    var tapped = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 180,
+            height: 180,
+            child: MetricTile(
+              label: 'En ligne',
+              value: 2,
+              icon: Icons.signal_cellular_alt,
+              color: Colors.green,
+              onTap: () => tapped = true,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('En ligne'));
+    await tester.pump();
+
+    expect(tapped, isTrue);
+    expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
+  });
+
+  testWidgets('distingue une nouvelle alerte dans la liste corporate', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: const Scaffold(
+          body: CorporateAlertRow(
+            alert: AlertData(
+              id: 1,
+              title: 'Aucun signal',
+              message: 'Le véhicule ne transmet plus de signal.',
+              severity: 'high',
+              status: 'new',
+              vehicle: 'PALISADE',
+              occurredAt: '2026-08-08T10:30:00Z',
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Nouveau'), findsOneWidget);
+    expect(find.text('PALISADE'), findsOneWidget);
+    expect(find.byIcon(Icons.notification_important_outlined), findsOneWidget);
   });
 }
 

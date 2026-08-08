@@ -34,28 +34,56 @@ class _AlertsScreenState extends State<AlertsScreen> {
             }),
           ),
           const SizedBox(height: 18),
-          SwitchListTile(
-            value: onlyNew,
-            onChanged: (value) => setState(() => onlyNew = value),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-            title: Text(context.tr('only_new_alerts')),
+          Material(
+            color: Theme.of(context).colorScheme.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(color: Theme.of(context).dividerColor),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: SwitchListTile(
+              value: onlyNew,
+              onChanged: (value) => setState(() => onlyNew = value),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+              secondary: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.secondary.withValues(alpha: .09),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.mark_email_unread_outlined,
+                  size: 19,
+                  color: Theme.of(context).colorScheme.secondary,
+                ),
+              ),
+              title: Text(
+                context.tr('only_new_alerts'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           ),
-          const SizedBox(height: 8),
-          SectionPanel(
-            child: alerts.isEmpty
-                ? EmptyState(
-                    icon: Icons.notifications_none,
-                    message: context.tr('no_alert_selection'),
-                  )
-                : Column(
-                    children: [
-                      for (var i = 0; i < alerts.length; i++) ...[
-                        AlertRow(alert: alerts[i]),
-                        if (i < alerts.length - 1) const Divider(height: 1),
-                      ],
-                    ],
-                  ),
-          ),
+          const SizedBox(height: 12),
+          if (alerts.isEmpty)
+            SectionPanel(
+              child: EmptyState(
+                icon: Icons.notifications_none,
+                message: context.tr('no_alert_selection'),
+              ),
+            )
+          else
+            ...alerts.map(
+              (alert) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: CorporateAlertRow(alert: alert),
+              ),
+            ),
         ],
       ),
     );

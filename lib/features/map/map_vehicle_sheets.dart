@@ -67,53 +67,149 @@ Future<void> showVehicleEventsSheet(
             );
           }
           return ListView.separated(
+            padding: const EdgeInsets.only(top: 2, bottom: 12),
             itemCount: events.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final event = events[index];
-              return ListTile(
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                leading: Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.secondary.withValues(alpha: .1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.notifications_active_outlined,
-                    color: Theme.of(context).colorScheme.secondary,
-                  ),
-                ),
-                title: Text(
-                  event.title,
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (event.message.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(event.message),
-                    ],
-                    if (event.startedAt != null) ...[
-                      const SizedBox(height: 5),
-                      Text(
-                        _formatDateTime(event.startedAt!),
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
+            separatorBuilder: (_, _) => const SizedBox(height: 8),
+            itemBuilder: (context, index) =>
+                _CorporateVehicleEventRow(event: events[index]),
           );
         },
       ),
     ),
   );
+}
+
+class _CorporateVehicleEventRow extends StatelessWidget {
+  const _CorporateVehicleEventRow({required this.event});
+
+  final VehicleEventData event;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final (icon, color) = _eventVisual;
+    final timestamp = event.startedAt == null
+        ? null
+        : _formatDateTime(event.startedAt!);
+
+    return Material(
+      color: scheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: Theme.of(context).dividerColor),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          event.title,
+                          style: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (event.message.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      event.message,
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 10.5,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                  if (timestamp != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.schedule_rounded,
+                          size: 13,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          timestamp,
+                          style: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        if (event.latitude != null &&
+                            event.longitude != null) ...[
+                          const Spacer(),
+                          Icon(
+                            Icons.location_on_outlined,
+                            size: 14,
+                            color: color,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  (IconData, Color) get _eventVisual {
+    final value = '${event.type} ${event.title}'.toLowerCase();
+    if (value.contains('ignition') || value.contains('contact')) {
+      return (Icons.power_settings_new_rounded, const Color(0xFF2563EB));
+    }
+    if (value.contains('movement') || value.contains('mouvement')) {
+      return (Icons.route_rounded, const Color(0xFF0891B2));
+    }
+    if (value.contains('signal') || value.contains('offline')) {
+      return (
+        Icons.signal_wifi_statusbar_connected_no_internet_4_rounded,
+        AppTheme.warning,
+      );
+    }
+    if (value.contains('speed') || value.contains('vitesse')) {
+      return (Icons.speed_rounded, AppTheme.danger);
+    }
+    return (Icons.notifications_active_outlined, const Color(0xFF7C3AED));
+  }
 }
 
 Future<void> showVehicleTripsSheet(
@@ -202,15 +298,15 @@ class _TripsSheetState extends State<_TripsSheet> {
                 backgroundColor: WidgetStateProperty.resolveWith((states) {
                   return states.contains(WidgetState.selected)
                       ? Theme.of(context).colorScheme.primary
-                      : Colors.white;
+                      : Theme.of(context).colorScheme.surface;
                 }),
                 foregroundColor: WidgetStateProperty.resolveWith((states) {
                   return states.contains(WidgetState.selected)
                       ? Colors.white
-                      : AppTheme.ink;
+                      : Theme.of(context).colorScheme.onSurface;
                 }),
-                side: const WidgetStatePropertyAll(
-                  BorderSide(color: AppTheme.border),
+                side: WidgetStatePropertyAll(
+                  BorderSide(color: Theme.of(context).dividerColor),
                 ),
                 shape: const WidgetStatePropertyAll(
                   RoundedRectangleBorder(
@@ -767,8 +863,8 @@ class _DetailSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: AppTheme.border),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(
@@ -826,7 +922,7 @@ class _EmptyDetail extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppTheme.background,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(message, textAlign: TextAlign.center),
@@ -904,8 +1000,8 @@ class _TripsSummary extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
       decoration: BoxDecoration(
-        color: AppTheme.background,
-        border: Border.all(color: AppTheme.border),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        border: Border.all(color: Theme.of(context).dividerColor),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -961,8 +1057,8 @@ class _TripSummaryMetric extends StatelessWidget {
                   value,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: AppTheme.ink,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurface,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
@@ -992,7 +1088,7 @@ class _TripSummaryDivider extends StatelessWidget {
       width: 1,
       height: 34,
       margin: const EdgeInsets.symmetric(horizontal: 10),
-      color: AppTheme.border,
+      color: Theme.of(context).dividerColor,
     );
   }
 }
@@ -1014,8 +1110,8 @@ class _TripDateHeader extends StatelessWidget {
         const SizedBox(width: 7),
         Text(
           date,
-          style: const TextStyle(
-            color: AppTheme.ink,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
@@ -1036,10 +1132,10 @@ class _TripTimelineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: Theme.of(context).colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: AppTheme.border),
+        side: BorderSide(color: Theme.of(context).dividerColor),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -1101,9 +1197,11 @@ class _TripTimelineCard extends StatelessWidget {
                       const SizedBox(height: 10),
                       Container(
                         padding: const EdgeInsets.only(top: 10),
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           border: Border(
-                            top: BorderSide(color: AppTheme.border),
+                            top: BorderSide(
+                              color: Theme.of(context).dividerColor,
+                            ),
                           ),
                         ),
                         child: Row(
@@ -1162,8 +1260,8 @@ class _TripEndpoint extends StatelessWidget {
             width: 42,
             child: Text(
               time,
-              style: const TextStyle(
-                color: AppTheme.ink,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurface,
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
               ),
@@ -1189,7 +1287,7 @@ class _TripEndpoint extends StatelessWidget {
                     width: 9,
                     height: 9,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Theme.of(context).colorScheme.surface,
                       shape: BoxShape.circle,
                       border: Border.all(color: color, width: 2),
                     ),
@@ -1246,8 +1344,8 @@ class _TripCompactMetric extends StatelessWidget {
                 value,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: AppTheme.ink,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
                   fontSize: 10,
                   fontWeight: FontWeight.w600,
                 ),

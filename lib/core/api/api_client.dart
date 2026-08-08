@@ -58,7 +58,7 @@ class ApiClient {
         'device_identifier': deviceIdentifier,
         'device_name': deviceName,
         'platform': platform,
-        'app_version': '1.0.0',
+        'app_version': AppConfig.fullVersion,
       },
     );
     return _authenticationResult(result.body);

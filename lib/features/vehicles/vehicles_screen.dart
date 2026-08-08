@@ -3,15 +3,23 @@ import 'package:flutter/material.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/models/app_models.dart';
 import '../../core/session/session_controller.dart';
-import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/ui_components.dart';
 
 enum VehicleFilter { all, online, offline }
 
 class VehiclesScreen extends StatefulWidget {
-  const VehiclesScreen({super.key, required this.session});
+  const VehiclesScreen({
+    super.key,
+    required this.session,
+    required this.onOpenMap,
+    this.requestedFilter = VehicleFilter.all,
+    this.filterRequestId = 0,
+  });
 
   final SessionController session;
+  final ValueChanged<VehicleData>? onOpenMap;
+  final VehicleFilter requestedFilter;
+  final int filterRequestId;
 
   @override
   State<VehiclesScreen> createState() => _VehiclesScreenState();
@@ -19,7 +27,21 @@ class VehiclesScreen extends StatefulWidget {
 
 class _VehiclesScreenState extends State<VehiclesScreen> {
   String query = '';
-  VehicleFilter filter = VehicleFilter.all;
+  late VehicleFilter filter;
+
+  @override
+  void initState() {
+    super.initState();
+    filter = widget.requestedFilter;
+  }
+
+  @override
+  void didUpdateWidget(covariant VehiclesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.filterRequestId != widget.filterRequestId) {
+      filter = widget.requestedFilter;
+    }
+  }
 
   List<VehicleData> get filteredVehicles {
     return widget.session.vehicles.where((vehicle) {
@@ -92,82 +114,15 @@ class _VehiclesScreenState extends State<VehiclesScreen> {
           else
             ...vehicles.map(
               (vehicle) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: SectionPanel(
-                  child: VehicleRow(
-                    vehicle: vehicle,
-                    onTap: () => _showVehicle(context, vehicle),
-                  ),
+                padding: const EdgeInsets.only(bottom: 8),
+                child: CorporateVehicleRow(
+                  vehicle: vehicle,
+                  onTap: widget.onOpenMap == null
+                      ? null
+                      : () => widget.onOpenMap!(vehicle),
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  void _showVehicle(BuildContext context, VehicleData vehicle) {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(22, 4, 22, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(vehicle.name, style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 6),
-              Text(vehicle.registration),
-              const Divider(height: 30),
-              _DetailLine(
-                label: context.tr('status'),
-                value: vehicle.isOnline
-                    ? context.tr('online')
-                    : context.tr('offline'),
-              ),
-              _DetailLine(
-                label: context.tr('speed'),
-                value: '${vehicle.speed} km/h',
-              ),
-              if (vehicle.address?.isNotEmpty == true)
-                _DetailLine(
-                  label: context.tr('last_position'),
-                  value: vehicle.address!,
-                ),
-              if (vehicle.lastSignalAt != null)
-                _DetailLine(
-                  label: context.tr('last_signal'),
-                  value: vehicle.lastSignalAt!,
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DetailLine extends StatelessWidget {
-  const _DetailLine({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(label, style: const TextStyle(color: AppTheme.muted)),
-          ),
-          Expanded(child: Text(value, textAlign: TextAlign.right)),
         ],
       ),
     );

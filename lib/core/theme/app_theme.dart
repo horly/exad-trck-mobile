@@ -13,76 +13,94 @@ class AppTheme {
   static const warning = Color(0xFFE98A00);
   static const danger = Color(0xFFE23D4F);
 
-  static ThemeData fromBranding(BrandingData branding) {
+  static ThemeData fromBranding(
+    BrandingData branding, {
+    Brightness brightness = Brightness.light,
+  }) {
+    final dark = brightness == Brightness.dark;
     final scheme = ColorScheme.fromSeed(
       seedColor: branding.primary,
       primary: branding.primary,
       secondary: branding.secondary,
-      surface: Colors.white,
+      surface: dark ? const Color(0xFF121A2B) : Colors.white,
       error: danger,
-      brightness: Brightness.light,
+      brightness: brightness,
     );
+    final themeBackground = dark ? const Color(0xFF0A1020) : background;
+    final themeInk = dark ? const Color(0xFFF1F5F9) : ink;
+    final themeMuted = dark ? const Color(0xFF9DABC2) : muted;
+    final themeBorder = dark ? const Color(0xFF28354C) : border;
 
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
-      scaffoldBackgroundColor: background,
-      textTheme: const TextTheme(
+      scaffoldBackgroundColor: themeBackground,
+      textTheme: TextTheme(
         headlineSmall: TextStyle(
-          color: ink,
+          color: themeInk,
           fontSize: 24,
           fontWeight: FontWeight.w700,
           height: 1.2,
         ),
         titleLarge: TextStyle(
-          color: ink,
+          color: themeInk,
           fontSize: 19,
           fontWeight: FontWeight.w700,
         ),
         titleMedium: TextStyle(
-          color: ink,
+          color: themeInk,
           fontSize: 15,
           fontWeight: FontWeight.w700,
         ),
-        bodyLarge: TextStyle(color: ink, fontSize: 15, height: 1.45),
-        bodyMedium: TextStyle(color: muted, fontSize: 13, height: 1.4),
+        bodyLarge: TextStyle(color: themeInk, fontSize: 15, height: 1.45),
+        bodyMedium: TextStyle(color: themeMuted, fontSize: 13, height: 1.4),
         labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
       ),
-      appBarTheme: const AppBarTheme(
-        backgroundColor: background,
-        foregroundColor: ink,
+      appBarTheme: AppBarTheme(
+        backgroundColor: themeBackground,
+        foregroundColor: themeInk,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
         titleTextStyle: TextStyle(
-          color: ink,
+          color: themeInk,
           fontSize: 19,
           fontWeight: FontWeight.w700,
         ),
       ),
-      cardTheme: const CardThemeData(
-        color: Colors.white,
+      cardTheme: CardThemeData(
+        color: scheme.surface,
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.all(Radius.circular(8)),
-          side: BorderSide(color: border),
+          side: BorderSide(color: themeBorder),
         ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: scheme.surface,
+        modalBackgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        dragHandleColor: themeMuted,
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white,
+        fillColor: scheme.surface,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
           vertical: 15,
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: border),
+          borderSide: BorderSide(color: themeBorder),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: border),
+          borderSide: BorderSide(color: themeBorder),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -96,7 +114,7 @@ class AppTheme {
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: danger, width: 1.5),
         ),
-        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+        hintStyle: TextStyle(color: themeMuted, fontSize: 13),
         errorStyle: const TextStyle(color: danger, fontSize: 11),
       ),
       filledButtonTheme: FilledButtonThemeData(
@@ -135,7 +153,7 @@ class AppTheme {
           Colors.white.withValues(alpha: 0.08),
         ),
       ),
-      dividerColor: border,
+      dividerColor: themeBorder,
     );
   }
 }
