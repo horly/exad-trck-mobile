@@ -3,6 +3,7 @@ import 'package:exad_tracking_mobile/core/localization/app_localizations.dart';
 import 'package:exad_tracking_mobile/core/models/app_models.dart';
 import 'package:exad_tracking_mobile/core/session/session_controller.dart';
 import 'package:exad_tracking_mobile/features/dashboard/superadmin_dashboard_screen.dart';
+import 'package:exad_tracking_mobile/features/drivers/drivers_screen.dart';
 import 'package:exad_tracking_mobile/features/vehicles/vehicles_screen.dart';
 import 'package:exad_tracking_mobile/shared/widgets/ui_components.dart';
 import 'package:flutter/material.dart';
@@ -205,6 +206,58 @@ void main() {
     expect(find.text('Nouveau'), findsOneWidget);
     expect(find.text('PALISADE'), findsOneWidget);
     expect(find.byIcon(Icons.notification_important_outlined), findsOneWidget);
+  });
+
+  testWidgets('affiche les chauffeurs en lecture seule sans identifiant', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: DriversScreen(
+          session: _session(role: 'admin'),
+          loadDrivers: () async => const [
+            DriverData(
+              id: 8,
+              fullName: 'Arnold Lula',
+              employeeId: 'CH-001',
+              phone: '+243810000001',
+              email: 'arnold@example.test',
+              status: 'active',
+              fleet: FleetInfo(id: 1, name: 'EXAD CARS', code: 'EX-CRS'),
+              department: DriverDepartmentData(
+                id: 4,
+                name: 'Operations',
+                code: 'OPS',
+              ),
+              vehicles: [
+                DriverVehicleData(
+                  id: 1,
+                  name: 'Toyota Hiace',
+                  registration: '1234BV01',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Arnold Lula'), findsOneWidget);
+    expect(find.text('Operations'), findsOneWidget);
+    expect(find.text('Toyota Hiace (1234BV01)'), findsOneWidget);
+    expect(find.text('38000009A29C2114'), findsNothing);
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(find.byIcon(Icons.delete_outline), findsNothing);
+    expect(find.byIcon(Icons.add), findsNothing);
   });
 }
 

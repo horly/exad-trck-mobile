@@ -31,7 +31,10 @@ Future<void> showVehicleDetailsSheet(
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) return _SheetError(snapshot.error);
-          return _VehicleDetailsContent(data: snapshot.data!);
+          return _VehicleDetailsContent(
+            data: snapshot.data!,
+            showDriverIdentifier: showTechnicalDetails,
+          );
         },
       ),
     ),
@@ -450,9 +453,13 @@ class _SheetFrame extends StatelessWidget {
 }
 
 class _VehicleDetailsContent extends StatelessWidget {
-  const _VehicleDetailsContent({required this.data});
+  const _VehicleDetailsContent({
+    required this.data,
+    required this.showDriverIdentifier,
+  });
 
   final VehicleDetailData data;
+  final bool showDriverIdentifier;
 
   @override
   Widget build(BuildContext context) {
@@ -463,6 +470,26 @@ class _VehicleDetailsContent extends StatelessWidget {
     final gsm = data.gsm;
     final diagnostic = data.diagnostic;
     final obd = data.obdCan;
+    Widget canStateLine({
+      required IconData icon,
+      required String labelKey,
+      required bool state,
+      required String activeKey,
+      required String inactiveKey,
+      bool alertWhenActive = false,
+    }) {
+      return _DetailLine(
+        icon: icon,
+        label: context.tr(labelKey),
+        value: context.tr(state ? activeKey : inactiveKey),
+        badgeColor: state
+            ? (alertWhenActive
+                  ? AppTheme.warning
+                  : Theme.of(context).colorScheme.secondary)
+            : AppTheme.success,
+      );
+    }
+
     final sections = <Widget>[
       _DetailSection(
         title: vehicle.registration == '-'
@@ -567,11 +594,12 @@ class _VehicleDetailsContent extends StatelessWidget {
                     label: context.tr('department'),
                     value: _text(data.driver!.department),
                   ),
-                  _DetailLine(
-                    icon: Icons.key_outlined,
-                    label: context.tr('identifier'),
-                    value: _text(data.driver!.identifierUid),
-                  ),
+                  if (showDriverIdentifier)
+                    _DetailLine(
+                      icon: Icons.key_outlined,
+                      label: context.tr('identifier'),
+                      value: _text(data.driver!.identifierUid),
+                    ),
                   _DetailLine(
                     icon: Icons.phone_outlined,
                     label: context.tr('phone'),
@@ -672,11 +700,12 @@ class _VehicleDetailsContent extends StatelessWidget {
                     label: context.tr('protocol'),
                     value: _text(diagnostic.protocol),
                   ),
-                  _DetailLine(
-                    icon: Icons.key_outlined,
-                    label: context.tr('identifier'),
-                    value: _text(diagnostic.driverIdentifierUid),
-                  ),
+                  if (showDriverIdentifier)
+                    _DetailLine(
+                      icon: Icons.key_outlined,
+                      label: context.tr('identifier'),
+                      value: _text(diagnostic.driverIdentifierUid),
+                    ),
                   _DetailLine(
                     icon: Icons.route_outlined,
                     label: context.tr('odometer'),
@@ -776,6 +805,148 @@ class _VehicleDetailsContent extends StatelessWidget {
                         ? '-'
                         : '${obd.distanceSinceClearKm} km',
                   ),
+                  if (obd.states.hasData) ...[
+                    const Divider(height: 28),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Text(
+                          context.tr('can_vehicle_states'),
+                          style: Theme.of(context).textTheme.titleSmall
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ),
+                    if (obd.states.rearRightDoorOpen case final state?)
+                      canStateLine(
+                        icon: Icons.sensor_door_outlined,
+                        labelKey: 'can_rear_right_door',
+                        state: state,
+                        activeKey: 'can_state_open',
+                        inactiveKey: 'can_state_closed',
+                        alertWhenActive: true,
+                      ),
+                    if (obd.states.rearLeftDoorOpen case final state?)
+                      canStateLine(
+                        icon: Icons.sensor_door_outlined,
+                        labelKey: 'can_rear_left_door',
+                        state: state,
+                        activeKey: 'can_state_open',
+                        inactiveKey: 'can_state_closed',
+                        alertWhenActive: true,
+                      ),
+                    if (obd.states.frontRightDoorOpen case final state?)
+                      canStateLine(
+                        icon: Icons.sensor_door_outlined,
+                        labelKey: 'can_front_right_door',
+                        state: state,
+                        activeKey: 'can_state_open',
+                        inactiveKey: 'can_state_closed',
+                        alertWhenActive: true,
+                      ),
+                    if (obd.states.frontLeftDoorOpen case final state?)
+                      canStateLine(
+                        icon: Icons.sensor_door_outlined,
+                        labelKey: 'can_front_left_door',
+                        state: state,
+                        activeKey: 'can_state_open',
+                        inactiveKey: 'can_state_closed',
+                        alertWhenActive: true,
+                      ),
+                    if (obd.states.roofOpen case final state?)
+                      canStateLine(
+                        icon: Icons.airline_seat_recline_normal_outlined,
+                        labelKey: 'can_roof',
+                        state: state,
+                        activeKey: 'can_state_open',
+                        inactiveKey: 'can_state_closed',
+                        alertWhenActive: true,
+                      ),
+                    if (obd.states.webastoOn case final state?)
+                      canStateLine(
+                        icon: Icons.thermostat_outlined,
+                        labelKey: 'can_webasto',
+                        state: state,
+                        activeKey: 'can_state_on',
+                        inactiveKey: 'can_state_off',
+                      ),
+                    if (obd.states.clutchPressed case final state?)
+                      canStateLine(
+                        icon: Icons.settings_input_component_outlined,
+                        labelKey: 'can_clutch',
+                        state: state,
+                        activeKey: 'can_state_pressed',
+                        inactiveKey: 'can_state_released',
+                      ),
+                    if (obd.states.ignitionOn case final state?)
+                      canStateLine(
+                        icon: Icons.key_outlined,
+                        labelKey: 'can_ignition',
+                        state: state,
+                        activeKey: 'can_state_on',
+                        inactiveKey: 'can_state_off',
+                      ),
+                    if (obd.states.keyInIgnition case final state?)
+                      canStateLine(
+                        icon: Icons.vpn_key_outlined,
+                        labelKey: 'can_key_in_ignition',
+                        state: state,
+                        activeKey: 'can_state_present',
+                        inactiveKey: 'can_state_absent',
+                      ),
+                    if (obd.states.footbrakeActive case final state?)
+                      canStateLine(
+                        icon: Icons.stop_circle_outlined,
+                        labelKey: 'can_footbrake',
+                        state: state,
+                        activeKey: 'can_state_active',
+                        inactiveKey: 'can_state_inactive',
+                      ),
+                    if (obd.states.engineRunning case final state?)
+                      canStateLine(
+                        icon: Icons.settings_outlined,
+                        labelKey: 'can_engine',
+                        state: state,
+                        activeKey: 'can_state_running',
+                        inactiveKey: 'can_state_stopped',
+                      ),
+                    if (obd.states.hoodOpen case final state?)
+                      canStateLine(
+                        icon: Icons.car_repair_outlined,
+                        labelKey: 'can_hood',
+                        state: state,
+                        activeKey: 'can_state_open',
+                        inactiveKey: 'can_state_closed',
+                        alertWhenActive: true,
+                      ),
+                    if (obd.states.trunkOpen case final state?)
+                      canStateLine(
+                        icon: Icons.inventory_2_outlined,
+                        labelKey: 'can_trunk',
+                        state: state,
+                        activeKey: 'can_state_open',
+                        inactiveKey: 'can_state_closed',
+                        alertWhenActive: true,
+                      ),
+                    if (obd.states.handbrakeActive case final state?)
+                      canStateLine(
+                        icon: Icons.pause_circle_outline,
+                        labelKey: 'can_handbrake',
+                        state: state,
+                        activeKey: 'can_state_active',
+                        inactiveKey: 'can_state_inactive',
+                      ),
+                    if (obd.states.doorsOpen case final state?)
+                      canStateLine(
+                        icon: Icons.directions_car_outlined,
+                        labelKey: 'can_doors',
+                        state: state,
+                        activeKey: 'can_state_open_plural',
+                        inactiveKey: 'can_state_closed_plural',
+                        alertWhenActive: true,
+                      ),
+                  ],
                 ],
               ),
       ),

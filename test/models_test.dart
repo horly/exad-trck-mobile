@@ -71,7 +71,19 @@ void main() {
         'power': {'external_voltage': 12.8, 'battery_level_percent': 90},
         'gsm': {'signal_percent': 80, 'operator_name': 'Vodacom'},
         'diagnostic': {'satellites': 10, 'io_count': 2, 'sensor_count': 1},
-        'obd_can': {'rpm': 1800, 'engine_temperature_c': 84},
+        'obd_can': {
+          'rpm': 1800,
+          'engine_temperature_c': 84,
+          'states': {
+            'ignition_on': true,
+            'engine_running': true,
+            'front_left_door_open': false,
+            'rear_right_door_open': true,
+            'hood_open': false,
+            'trunk_open': false,
+            'doors_open': true,
+          },
+        },
         'recent_events': [
           {
             'id': 1,
@@ -94,6 +106,32 @@ void main() {
     expect(data.diagnostic?.satellites, 10);
     expect(data.obdCan?.rpm, 1800);
     expect(data.obdCan?.hasData, isTrue);
+    expect(data.obdCan?.states.ignitionOn, isTrue);
+    expect(data.obdCan?.states.engineRunning, isTrue);
+    expect(data.obdCan?.states.frontLeftDoorOpen, isFalse);
+    expect(data.obdCan?.states.rearRightDoorOpen, isTrue);
+    expect(data.obdCan?.states.doorsOpen, isTrue);
     expect(data.recentEvents, hasLength(1));
+  });
+
+  test('parse un chauffeur sans modele d identifiant', () {
+    final driver = DriverData.fromMap({
+      'id': 8,
+      'full_name': 'Arnold Lula',
+      'employee_id': 'CH-001',
+      'phone': '+243810000001',
+      'email': 'arnold@example.test',
+      'status': 'active',
+      'fleet': {'id': 2, 'name': 'EXAD CARS', 'code': 'EX-CRS'},
+      'department': {'id': 4, 'name': 'Operations', 'code': 'OPS'},
+      'vehicles': [
+        {'id': 12, 'name': 'Toyota Hiace', 'registration_number': '1234BV01'},
+      ],
+    });
+
+    expect(driver.fullName, 'Arnold Lula');
+    expect(driver.isActive, isTrue);
+    expect(driver.department?.name, 'Operations');
+    expect(driver.vehicles.single.registration, '1234BV01');
   });
 }

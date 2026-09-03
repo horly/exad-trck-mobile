@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../shared/widgets/exad_logo.dart';
 import '../../shared/widgets/ui_components.dart';
+import '../drivers/drivers_screen.dart';
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({
@@ -169,6 +170,21 @@ class MoreScreen extends StatelessWidget {
             value: superadmin
                 ? context.tr('global_overview')
                 : user?.fleet?.name ?? context.tr('unassigned'),
+          ),
+        ),
+        const SizedBox(height: 16),
+        SectionPanel(
+          padding: const EdgeInsets.all(14),
+          child: _SettingsRow(
+            icon: Icons.badge_outlined,
+            title: context.tr('drivers'),
+            value: context.tr('read_only'),
+            color: const Color(0xFFE5A000),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => DriversScreen(session: session),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 16),

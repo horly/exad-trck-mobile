@@ -326,6 +326,92 @@ class VehicleData {
   }
 }
 
+class DriverData {
+  const DriverData({
+    required this.id,
+    required this.fullName,
+    required this.status,
+    this.employeeId,
+    this.phone,
+    this.email,
+    this.fleet,
+    this.department,
+    this.vehicles = const [],
+  });
+
+  final int id;
+  final String fullName;
+  final String? employeeId;
+  final String? phone;
+  final String? email;
+  final String status;
+  final FleetInfo? fleet;
+  final DriverDepartmentData? department;
+  final List<DriverVehicleData> vehicles;
+
+  factory DriverData.fromMap(Map<String, dynamic> map) {
+    final fleet = mapOf(map['fleet']);
+    final department = mapOf(map['department']);
+    return DriverData(
+      id: intOf(map['id']),
+      fullName: map['full_name']?.toString() ?? '-',
+      employeeId: map['employee_id']?.toString(),
+      phone: map['phone']?.toString(),
+      email: map['email']?.toString(),
+      status: map['status']?.toString() ?? 'inactive',
+      fleet: fleet.isEmpty ? null : FleetInfo.fromMap(fleet),
+      department: department.isEmpty
+          ? null
+          : DriverDepartmentData.fromMap(department),
+      vehicles: listOfMaps(
+        map['vehicles'],
+      ).map(DriverVehicleData.fromMap).toList(growable: false),
+    );
+  }
+
+  bool get isActive => status == 'active';
+}
+
+class DriverDepartmentData {
+  const DriverDepartmentData({
+    required this.id,
+    required this.name,
+    required this.code,
+  });
+
+  final int id;
+  final String name;
+  final String code;
+
+  factory DriverDepartmentData.fromMap(Map<String, dynamic> map) {
+    return DriverDepartmentData(
+      id: intOf(map['id']),
+      name: map['name']?.toString() ?? '-',
+      code: map['code']?.toString() ?? '-',
+    );
+  }
+}
+
+class DriverVehicleData {
+  const DriverVehicleData({
+    required this.id,
+    required this.name,
+    required this.registration,
+  });
+
+  final int id;
+  final String name;
+  final String registration;
+
+  factory DriverVehicleData.fromMap(Map<String, dynamic> map) {
+    return DriverVehicleData(
+      id: intOf(map['id']),
+      name: map['name']?.toString() ?? '-',
+      registration: map['registration_number']?.toString() ?? '-',
+    );
+  }
+}
+
 class VehicleDetailData {
   const VehicleDetailData({
     required this.vehicle,
@@ -587,6 +673,7 @@ class VehicleObdDetail {
     this.faultDistanceKm,
     this.errorsCount,
     this.distanceSinceClearKm,
+    this.states = const VehicleCanStates(),
     this.updatedAt,
   });
 
@@ -601,6 +688,7 @@ class VehicleObdDetail {
   final int? faultDistanceKm;
   final int? errorsCount;
   final int? distanceSinceClearKm;
+  final VehicleCanStates states;
   final String? updatedAt;
 
   bool get hasData =>
@@ -614,7 +702,8 @@ class VehicleObdDetail {
       fuelLevelPercent != null ||
       faultDistanceKm != null ||
       errorsCount != null ||
-      distanceSinceClearKm != null;
+      distanceSinceClearKm != null ||
+      states.hasData;
 
   factory VehicleObdDetail.fromMap(Map<String, dynamic> map) {
     return VehicleObdDetail(
@@ -637,7 +726,89 @@ class VehicleObdDetail {
       distanceSinceClearKm: map['distance_since_clear_km'] == null
           ? null
           : intOf(map['distance_since_clear_km']),
+      states: VehicleCanStates.fromMap(mapOf(map['states'])),
       updatedAt: map['updated_at']?.toString(),
+    );
+  }
+}
+
+class VehicleCanStates {
+  const VehicleCanStates({
+    this.rearRightDoorOpen,
+    this.rearLeftDoorOpen,
+    this.frontRightDoorOpen,
+    this.frontLeftDoorOpen,
+    this.roofOpen,
+    this.webastoOn,
+    this.clutchPressed,
+    this.ignitionOn,
+    this.keyInIgnition,
+    this.footbrakeActive,
+    this.engineRunning,
+    this.hoodOpen,
+    this.trunkOpen,
+    this.handbrakeActive,
+    this.doorsOpen,
+  });
+
+  final bool? rearRightDoorOpen;
+  final bool? rearLeftDoorOpen;
+  final bool? frontRightDoorOpen;
+  final bool? frontLeftDoorOpen;
+  final bool? roofOpen;
+  final bool? webastoOn;
+  final bool? clutchPressed;
+  final bool? ignitionOn;
+  final bool? keyInIgnition;
+  final bool? footbrakeActive;
+  final bool? engineRunning;
+  final bool? hoodOpen;
+  final bool? trunkOpen;
+  final bool? handbrakeActive;
+  final bool? doorsOpen;
+
+  bool get hasData =>
+      rearRightDoorOpen != null ||
+      rearLeftDoorOpen != null ||
+      frontRightDoorOpen != null ||
+      frontLeftDoorOpen != null ||
+      roofOpen != null ||
+      webastoOn != null ||
+      clutchPressed != null ||
+      ignitionOn != null ||
+      keyInIgnition != null ||
+      footbrakeActive != null ||
+      engineRunning != null ||
+      hoodOpen != null ||
+      trunkOpen != null ||
+      handbrakeActive != null ||
+      doorsOpen != null;
+
+  factory VehicleCanStates.fromMap(Map<String, dynamic> map) {
+    bool? state(String key) {
+      final value = map[key];
+      if (value is bool) return value;
+      if (value == 1 || value == '1' || value == 'true') return true;
+      if (value == 0 || value == '0' || value == 'false') return false;
+      return null;
+    }
+
+    return VehicleCanStates(
+      rearRightDoorOpen: state('rear_right_door_open'),
+      rearLeftDoorOpen: state('rear_left_door_open'),
+      frontRightDoorOpen: state('front_right_door_open'),
+      frontLeftDoorOpen: state('front_left_door_open'),
+      roofOpen: state('roof_open'),
+      webastoOn: state('webasto_on'),
+      clutchPressed: state('clutch_pressed'),
+      ignitionOn: state('ignition_on'),
+      keyInIgnition: state('key_in_ignition'),
+      footbrakeActive: state('footbrake_active'),
+      engineRunning: state('engine_running'),
+      hoodOpen: state('hood_open'),
+      trunkOpen: state('trunk_open'),
+      handbrakeActive: state('handbrake_active'),
+      doorsOpen: state('doors_open'),
     );
   }
 }

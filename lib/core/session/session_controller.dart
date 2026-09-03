@@ -181,6 +181,8 @@ class SessionController extends ChangeNotifier {
   Future<VehicleDetailData> vehicleDetails(int vehicleId) =>
       _apiClient.vehicleDetails(vehicleId);
 
+  Future<List<DriverData>> drivers() => _apiClient.drivers();
+
   Future<List<VehicleEventData>> vehicleEvents(int vehicleId) =>
       _apiClient.vehicleEvents(vehicleId);
 

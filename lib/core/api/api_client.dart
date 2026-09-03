@@ -100,6 +100,26 @@ class ApiClient {
     return listOfMaps(result.body['data']).map(VehicleData.fromMap).toList();
   }
 
+  Future<List<DriverData>> drivers() async {
+    final drivers = <DriverData>[];
+    var page = 1;
+    var lastPage = 1;
+
+    do {
+      final result = await _authorized(
+        'GET',
+        '/drivers',
+        query: {'per_page': '50', 'page': '$page'},
+      );
+      drivers.addAll(listOfMaps(result.body['data']).map(DriverData.fromMap));
+      lastPage = intOf(mapOf(result.body['meta'])['last_page']);
+      if (lastPage < 1) lastPage = 1;
+      page++;
+    } while (page <= lastPage);
+
+    return drivers;
+  }
+
   Future<VehicleDetailData> vehicleDetails(int vehicleId) async {
     final result = await _authorized('GET', '/vehicles/$vehicleId/details');
     return VehicleDetailData.fromMap(mapOf(result.body['data']));
