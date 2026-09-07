@@ -8,6 +8,7 @@ import '../../core/theme/theme_controller.dart';
 import '../../shared/widgets/exad_logo.dart';
 import '../../shared/widgets/ui_components.dart';
 import '../drivers/drivers_screen.dart';
+import '../departments/departments_screen.dart';
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({
@@ -175,16 +176,34 @@ class MoreScreen extends StatelessWidget {
         const SizedBox(height: 16),
         SectionPanel(
           padding: const EdgeInsets.all(14),
-          child: _SettingsRow(
-            icon: Icons.badge_outlined,
-            title: context.tr('drivers'),
-            value: context.tr('read_only'),
-            color: const Color(0xFFE5A000),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => DriversScreen(session: session),
+          child: Column(
+            children: [
+              _SettingsRow(
+                icon: Icons.badge_outlined,
+                title: context.tr('drivers'),
+                value: context.tr('read_only'),
+                color: const Color(0xFFE5A000),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => DriversScreen(session: session),
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(height: 8),
+              _SettingsRow(
+                icon: Icons.apartment_outlined,
+                title: context.tr('departments'),
+                value: user?.canManageDepartments == true
+                    ? context.tr('manage')
+                    : context.tr('read_only'),
+                color: const Color(0xFF2563EB),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => DepartmentsScreen(session: session),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -406,9 +425,10 @@ class MoreScreen extends StatelessWidget {
   String _permissionLabel(BuildContext context, String permission) {
     return switch (permission) {
       'map_view' => context.tr('map'),
-      'reports_generate' => 'Rapports',
-      'garages_manage' => 'Garages',
-      'maintenance_manage' => 'Entretiens',
+      'reports_generate' => context.tr('reports'),
+      'garages_manage' => context.tr('garages'),
+      'maintenance_manage' => context.tr('maintenance_access'),
+      'engine_control' => context.tr('engine_control'),
       _ => permission.replaceAll('_', ' '),
     };
   }

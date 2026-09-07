@@ -17,7 +17,7 @@ Le bloc `release` de `android/app/build.gradle.kts` utilise actuellement la sign
 La version se trouve dans `pubspec.yaml` :
 
 ```yaml
-version: 1.0.0+2
+version: 1.0.0+17
 ```
 
 - `1.0.0` devient `versionName` Android et `CFBundleShortVersionString` iOS.

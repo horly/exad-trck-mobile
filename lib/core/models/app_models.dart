@@ -103,6 +103,10 @@ class AppUser {
 
   bool get isSuperadmin => role.toLowerCase() == 'superadmin';
 
+  bool get isAdmin => role.toLowerCase() == 'admin';
+
+  bool get canManageDepartments => isSuperadmin || isAdmin;
+
   String get initials {
     final parts = name.trim().split(RegExp(r'\s+'));
     if (parts.isEmpty || parts.first.isEmpty) return 'U';
@@ -210,6 +214,10 @@ class VehicleData {
     this.isMoving = false,
     this.isParking = false,
     this.isStationaryRunning = false,
+    this.gpsStatus = 'unavailable',
+    this.gpsQualityPercent,
+    this.networkSignalPercent,
+    this.batteryLevelPercent,
     this.trail = const [],
     this.heading,
     this.ignition,
@@ -236,6 +244,10 @@ class VehicleData {
   final bool isMoving;
   final bool isParking;
   final bool isStationaryRunning;
+  final String gpsStatus;
+  final int? gpsQualityPercent;
+  final int? networkSignalPercent;
+  final int? batteryLevelPercent;
   final List<GeoCoordinateData> trail;
   final int? heading;
   final bool? ignition;
@@ -245,6 +257,10 @@ class VehicleData {
   final double? longitude;
   final String? lastSignalAt;
   final FleetInfo? fleet;
+
+  bool get hasAvailableGps =>
+      gpsStatus == 'available' ||
+      (isOnline && latitude != null && longitude != null);
 
   factory VehicleData.fromMap(Map<String, dynamic> map) {
     final tracking = mapOf(map['tracking']);
@@ -270,6 +286,16 @@ class VehicleData {
           tracking['online'] == true &&
           tracking['ignition'] == true &&
           tracking['movement'] != true,
+      gpsStatus: tracking['gps_status']?.toString() ?? 'unavailable',
+      gpsQualityPercent: tracking['gps_quality_percent'] == null
+          ? null
+          : intOf(tracking['gps_quality_percent']),
+      networkSignalPercent: tracking['network_signal_percent'] == null
+          ? null
+          : intOf(tracking['network_signal_percent']),
+      batteryLevelPercent: tracking['battery_level_percent'] == null
+          ? null
+          : intOf(tracking['battery_level_percent']),
       heading: tracking['heading'] == null ? null : intOf(tracking['heading']),
       ignition: tracking['ignition'] as bool?,
       movement: tracking['movement'] as bool?,
@@ -311,6 +337,16 @@ class VehicleData {
       isMoving: properties['is_moving'] == true,
       isParking: properties['is_parking'] == true,
       isStationaryRunning: properties['is_stationary_running'] == true,
+      gpsStatus: properties['gps_status']?.toString() ?? 'unavailable',
+      gpsQualityPercent: properties['gps_quality_percent'] == null
+          ? null
+          : intOf(properties['gps_quality_percent']),
+      networkSignalPercent: properties['network_signal_percent'] == null
+          ? null
+          : intOf(properties['network_signal_percent']),
+      batteryLevelPercent: properties['battery_level_percent'] == null
+          ? null
+          : intOf(properties['battery_level_percent']),
       trail: trail,
       heading: properties['heading'] == null
           ? null
@@ -372,6 +408,69 @@ class DriverData {
   bool get isActive => status == 'active';
 }
 
+class DepartmentData {
+  const DepartmentData({
+    required this.id,
+    required this.name,
+    required this.status,
+    required this.driversCount,
+    this.code,
+    this.description,
+    this.fleet,
+  });
+
+  final int id;
+  final String name;
+  final String? code;
+  final String? description;
+  final String status;
+  final int driversCount;
+  final FleetInfo? fleet;
+
+  bool get isActive => status == 'active';
+
+  factory DepartmentData.fromMap(Map<String, dynamic> map) {
+    final fleet = mapOf(map['fleet']);
+    return DepartmentData(
+      id: intOf(map['id']),
+      name: map['name']?.toString() ?? '-',
+      code: map['code']?.toString(),
+      description: map['description']?.toString(),
+      status: map['status']?.toString() ?? 'inactive',
+      driversCount: intOf(map['drivers_count']),
+      fleet: fleet.isEmpty ? null : FleetInfo.fromMap(fleet),
+    );
+  }
+}
+
+class DepartmentCollectionData {
+  const DepartmentCollectionData({
+    required this.departments,
+    required this.fleets,
+    required this.canManage,
+    required this.canDelete,
+  });
+
+  final List<DepartmentData> departments;
+  final List<FleetInfo> fleets;
+  final bool canManage;
+  final bool canDelete;
+
+  factory DepartmentCollectionData.fromMap(Map<String, dynamic> map) {
+    final management = mapOf(map['management']);
+    return DepartmentCollectionData(
+      departments: listOfMaps(
+        map['data'],
+      ).map(DepartmentData.fromMap).toList(growable: false),
+      fleets: listOfMaps(
+        management['fleets'],
+      ).map(FleetInfo.fromMap).toList(growable: false),
+      canManage: management['can_manage'] == true,
+      canDelete: management['can_delete'] == true,
+    );
+  }
+}
+
 class DriverDepartmentData {
   const DriverDepartmentData({
     required this.id,
@@ -423,6 +522,7 @@ class VehicleDetailData {
     this.gsm,
     this.diagnostic,
     this.obdCan,
+    this.engineControl,
   });
 
   final VehicleData vehicle;
@@ -433,6 +533,7 @@ class VehicleDetailData {
   final VehicleGsmDetail? gsm;
   final VehicleDiagnosticDetail? diagnostic;
   final VehicleObdDetail? obdCan;
+  final VehicleEngineControlDetail? engineControl;
   final List<VehicleEventData> recentEvents;
 
   factory VehicleDetailData.fromMap(Map<String, dynamic> map) {
@@ -444,6 +545,7 @@ class VehicleDetailData {
     final gsm = mapOf(details['gsm']);
     final diagnostic = mapOf(details['diagnostic']);
     final obdCan = mapOf(details['obd_can']);
+    final engineControl = mapOf(details['engine_control']);
     return VehicleDetailData(
       vehicle: VehicleData.fromMap(map),
       tracker: tracker.isEmpty ? null : VehicleTrackerDetail.fromMap(tracker),
@@ -457,9 +559,102 @@ class VehicleDetailData {
           ? null
           : VehicleDiagnosticDetail.fromMap(diagnostic),
       obdCan: obdCan.isEmpty ? null : VehicleObdDetail.fromMap(obdCan),
+      engineControl: engineControl.isEmpty
+          ? null
+          : VehicleEngineControlDetail.fromMap(engineControl),
       recentEvents: listOfMaps(
         details['recent_events'],
       ).map(VehicleEventData.fromMap).toList(),
+    );
+  }
+}
+
+class VehicleEngineControlDetail {
+  const VehicleEngineControlDetail({
+    required this.supported,
+    required this.allowed,
+    required this.immobilized,
+    required this.busy,
+    required this.outputs,
+    this.nextAction,
+    this.commandStatus,
+  });
+
+  final bool supported;
+  final bool allowed;
+  final bool immobilized;
+  final bool busy;
+  final List<VehicleEngineOutputDetail> outputs;
+  final String? nextAction;
+  final String? commandStatus;
+
+  bool get isVisible => supported && allowed;
+
+  factory VehicleEngineControlDetail.fromMap(Map<String, dynamic> map) {
+    final command = mapOf(map['command']);
+    final rawOutputs = map['outputs'];
+    final outputs = <VehicleEngineOutputDetail>[];
+
+    if (rawOutputs is Map) {
+      for (final entry in rawOutputs.entries) {
+        final output = mapOf(entry.value);
+        if (output.isEmpty) continue;
+        outputs.add(
+          VehicleEngineOutputDetail.fromMap(
+            output,
+            fallbackNumber: int.tryParse(entry.key.toString()),
+          ),
+        );
+      }
+    } else {
+      outputs.addAll(
+        listOfMaps(rawOutputs).map(VehicleEngineOutputDetail.fromMap),
+      );
+    }
+    if (outputs.isEmpty) {
+      outputs.addAll(const [
+        VehicleEngineOutputDetail(number: 1, active: null, busy: false),
+        VehicleEngineOutputDetail(number: 2, active: null, busy: false),
+      ]);
+    }
+    outputs.sort((left, right) => left.number.compareTo(right.number));
+
+    return VehicleEngineControlDetail(
+      supported: map['supported'] == true,
+      allowed: map['allowed'] == true,
+      immobilized: map['immobilized'] == true,
+      busy: map['busy'] == true,
+      outputs: outputs,
+      nextAction: map['next_action']?.toString(),
+      commandStatus: command['status']?.toString(),
+    );
+  }
+}
+
+class VehicleEngineOutputDetail {
+  const VehicleEngineOutputDetail({
+    required this.number,
+    required this.active,
+    required this.busy,
+    this.nextAction,
+  });
+
+  final int number;
+  final bool? active;
+  final bool busy;
+  final String? nextAction;
+
+  factory VehicleEngineOutputDetail.fromMap(
+    Map<String, dynamic> map, {
+    int? fallbackNumber,
+  }) {
+    final rawActive = map['active'];
+
+    return VehicleEngineOutputDetail(
+      number: intOf(map['number'] ?? fallbackNumber),
+      active: rawActive is bool ? rawActive : null,
+      busy: map['busy'] == true,
+      nextAction: map['next_action']?.toString(),
     );
   }
 }
@@ -581,6 +776,22 @@ class VehiclePowerDetail {
   final int? batteryLevelPercent;
   final bool? ignition;
   final String? updatedAt;
+
+  int? get effectiveBatteryLevelPercent {
+    if (batteryLevelPercent != null) {
+      return batteryLevelPercent!.clamp(0, 100);
+    }
+
+    final voltage = internalBatteryVoltage;
+    if (voltage == null || voltage < 3 || voltage > 5) return null;
+
+    const emptyVoltage = 3.3;
+    const fullVoltage = 4.2;
+    final estimated =
+        ((voltage - emptyVoltage) / (fullVoltage - emptyVoltage) * 100).round();
+
+    return estimated.clamp(0, 100);
+  }
 
   factory VehiclePowerDetail.fromMap(Map<String, dynamic> map) {
     return VehiclePowerDetail(

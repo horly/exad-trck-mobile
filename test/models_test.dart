@@ -18,6 +18,10 @@ void main() {
         'is_moving': true,
         'is_parking': false,
         'is_stationary_running': false,
+        'gps_status': 'available',
+        'gps_quality_percent': 70,
+        'network_signal_percent': 80,
+        'battery_level_percent': 88,
         'trail': [
           [15.310, -4.326],
           [15.311, -4.3255],
@@ -28,11 +32,37 @@ void main() {
 
     expect(vehicle.isMoving, isTrue);
     expect(vehicle.isParking, isFalse);
+    expect(vehicle.gpsStatus, 'available');
+    expect(vehicle.gpsQualityPercent, 70);
+    expect(vehicle.networkSignalPercent, 80);
+    expect(vehicle.batteryLevelPercent, 88);
     expect(vehicle.heading, 90);
     expect(vehicle.trail, hasLength(3));
     expect(vehicle.trail.last.latitude, -4.325);
     expect(vehicle.trail.last.longitude, 15.312);
   });
+
+  test(
+    'garde le GPS disponible avec une position en ligne sans satellites',
+    () {
+      final vehicle = VehicleData.fromMapFeature({
+        'geometry': {
+          'type': 'Point',
+          'coordinates': [15.312, -4.325],
+        },
+        'properties': {
+          'vehicle_id': 8,
+          'vehicle': 'Véhicule GPS',
+          'registration_number': 'GPS-001',
+          'status': 'online',
+          'speed_kmh': 0,
+        },
+      });
+
+      expect(vehicle.gpsQualityPercent, isNull);
+      expect(vehicle.hasAvailableGps, isTrue);
+    },
+  );
 
   test('parse les rubriques operationnelles du detail vehicule', () {
     final data = VehicleDetailData.fromMap({
@@ -84,6 +114,27 @@ void main() {
             'doors_open': true,
           },
         },
+        'engine_control': {
+          'supported': true,
+          'allowed': true,
+          'immobilized': false,
+          'busy': false,
+          'next_action': 'immobilize',
+          'outputs': {
+            '1': {
+              'number': 1,
+              'active': false,
+              'busy': false,
+              'next_action': 'immobilize',
+            },
+            '2': {
+              'number': 2,
+              'active': true,
+              'busy': true,
+              'next_action': 'release',
+            },
+          },
+        },
         'recent_events': [
           {
             'id': 1,
@@ -111,7 +162,55 @@ void main() {
     expect(data.obdCan?.states.frontLeftDoorOpen, isFalse);
     expect(data.obdCan?.states.rearRightDoorOpen, isTrue);
     expect(data.obdCan?.states.doorsOpen, isTrue);
+    expect(data.engineControl?.isVisible, isTrue);
+    expect(data.engineControl?.nextAction, 'immobilize');
+    expect(data.engineControl?.outputs, hasLength(2));
+    expect(data.engineControl?.outputs.first.number, 1);
+    expect(data.engineControl?.outputs.first.active, isFalse);
+    expect(data.engineControl?.outputs.last.number, 2);
+    expect(data.engineControl?.outputs.last.active, isTrue);
+    expect(data.engineControl?.outputs.last.busy, isTrue);
     expect(data.recentEvents, hasLength(1));
+  });
+
+  test('calcule un pourcentage depuis la tension interne si nécessaire', () {
+    const nativeLevel = VehiclePowerDetail(
+      internalBatteryVoltage: 3.4,
+      batteryLevelPercent: 88,
+    );
+    const voltageOnly = VehiclePowerDetail(internalBatteryVoltage: 3.94);
+
+    expect(nativeLevel.effectiveBatteryLevelPercent, 88);
+    expect(voltageOnly.effectiveBatteryLevelPercent, 71);
+  });
+
+  test('parse les départements et leurs capacités de gestion', () {
+    final collection = DepartmentCollectionData.fromMap({
+      'data': [
+        {
+          'id': 4,
+          'name': 'Operations',
+          'code': 'OPS',
+          'status': 'active',
+          'drivers_count': 3,
+          'fleet': {'id': 2, 'name': 'EXAD CARS', 'code': 'EX-CRS'},
+        },
+      ],
+      'management': {
+        'can_manage': true,
+        'can_delete': false,
+        'fleets': [
+          {'id': 2, 'name': 'EXAD CARS', 'code': 'EX-CRS'},
+        ],
+      },
+    });
+
+    expect(collection.departments.single.name, 'Operations');
+    expect(collection.departments.single.driversCount, 3);
+    expect(collection.departments.single.isActive, isTrue);
+    expect(collection.fleets.single.id, 2);
+    expect(collection.canManage, isTrue);
+    expect(collection.canDelete, isFalse);
   });
 
   test('parse un chauffeur sans modele d identifiant', () {

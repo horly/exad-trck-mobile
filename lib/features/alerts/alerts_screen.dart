@@ -5,9 +5,14 @@ import '../../core/session/session_controller.dart';
 import '../../shared/widgets/ui_components.dart';
 
 class AlertsScreen extends StatefulWidget {
-  const AlertsScreen({super.key, required this.session});
+  const AlertsScreen({
+    super.key,
+    required this.session,
+    this.showHeader = true,
+  });
 
   final SessionController session;
+  final bool showHeader;
 
   @override
   State<AlertsScreen> createState() => _AlertsScreenState();
@@ -27,13 +32,15 @@ class _AlertsScreenState extends State<AlertsScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
         children: [
-          ScreenTitle(
-            title: context.tr('alerts'),
-            subtitle: context.trFormat('new_alert_count', {
-              'count': widget.session.dashboard.newAlerts,
-            }),
-          ),
-          const SizedBox(height: 18),
+          if (widget.showHeader) ...[
+            ScreenTitle(
+              title: context.tr('alerts'),
+              subtitle: context.trFormat('new_alert_count', {
+                'count': widget.session.dashboard.newAlerts,
+              }),
+            ),
+            const SizedBox(height: 18),
+          ],
           Material(
             color: Theme.of(context).colorScheme.surface,
             shape: RoundedRectangleBorder(

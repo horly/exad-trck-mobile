@@ -23,7 +23,13 @@ Le préfixe `/api/v1/mobile` fait partie de la base. Les chemins utilisés par `
 | `GET` | `/bootstrap` | Profil, permissions et personnalisation |
 | `GET` | `/dashboard` | Indicateurs, activité et alertes récentes |
 | `GET` | `/vehicles?per_page=50` | Liste des véhicules visibles |
+| `GET` | `/drivers?per_page=50` | Chauffeurs visibles en lecture seule, sans identifiant RFID/iButton |
+| `GET` | `/departments?per_page=100` | Départements visibles et capacités de gestion |
+| `POST` | `/departments` | Création pour admin client ou superadmin |
+| `PUT` | `/departments/{id}` | Modification ou désactivation autorisée |
+| `DELETE` | `/departments/{id}` | Suppression réservée au superadmin si aucun chauffeur n’est affecté |
 | `GET` | `/vehicles/{id}/details` | Détail opérationnel d’un véhicule |
+| `POST` | `/vehicles/{id}/engine-commands` | Activation ou désactivation sécurisée d’une sortie du traceur |
 | `GET` | `/vehicles/{id}/trips?period=...` | Trajets et traces GeoJSON |
 | `GET` | `/events?vehicle_id={id}&per_page=50` | Événements du véhicule |
 | `GET` | `/alerts?per_page=50` | Alertes visibles |
@@ -59,7 +65,7 @@ La charge envoyée par le mobile contient :
   "device_identifier": "identifiant-stable-local",
   "device_name": "Android EXAD",
   "platform": "android",
-  "app_version": "1.0.0+2"
+  "app_version": "1.0.0+16"
 }
 ```
 
@@ -87,7 +93,7 @@ Le challenge n’est pas enregistré durablement.
 
 ## Rotation et expiration
 
-`ApiClient` effectue au maximum une tentative de rafraîchissement après une réponse non autorisée :
+`ApiClient` effectue au maximum une tentative de rafraîchissement après une réponse non autorisée. Les requêtes concurrentes partagent la même rotation (`single-flight`) et rejouent fidèlement leur méthode, leur corps et leurs paramètres :
 
 1. lecture de la paire courante dans le stockage sécurisé ;
 2. appel de `/auth/refresh` avec le refresh token ;
@@ -95,6 +101,26 @@ Le challenge n’est pas enregistré durablement.
 4. répétition de la requête initiale avec le nouvel access token.
 
 Si la rotation échoue, les jetons locaux sont supprimés. L’interface revient à la connexion lors de la prochaine mise à jour de session.
+
+Le bootstrap est rechargé lors d’une actualisation de l’espace afin que les changements de permissions prennent effet sans nouvelle connexion. Une réponse `403 ACCOUNT_UNAVAILABLE` ferme également la session locale.
+
+## Départements et sorties du traceur
+
+Tous les comptes rattachés à une flotte consultent ses départements. L’admin client peut créer, modifier et désactiver ceux de sa flotte ; un `fleet_id` forgé est remplacé côté serveur. Le superadmin peut gérer toutes les flottes et supprimer uniquement un département sans chauffeur.
+
+Le détail véhicule retourne `engine_control.outputs` avec deux états indépendants, indexés `1` et `2`. Chaque sortie fournit `number`, `active`, `busy` et `next_action`. La section est masquée quand le traceur est incompatible ou l’utilisateur non autorisé.
+
+La commande mobile transmet explicitement la sortie ciblée :
+
+```json
+{
+  "action": "immobilize",
+  "output": 1,
+  "confirmation": true
+}
+```
+
+`immobilize` active uniquement la sortie indiquée après validation complète de l’arrêt. `release` désactive uniquement cette même sortie. Le serveur encode l’autre sortie avec `?` afin de ne modifier ni son état ni sa temporisation.
 
 ## Carte et positions
 
@@ -107,8 +133,22 @@ Les champs utilisés incluent notamment :
 - vitesse, cap et contact ;
 - statut de communication ;
 - états `is_moving`, `is_parking` et `is_stationary_running` ;
+- statut GPS, pourcentage du signal réseau et pourcentage de batterie ;
 - date du dernier signal ;
 - trace récente pour l’animation du marqueur.
+
+Le bandeau considère le GPS disponible lorsqu’une position valide accompagne un
+traceur en ligne, même si le nombre de satellites est absent. Les niveaux réseau
+et batterie restent explicitement indisponibles tant que l’API ne fournit pas de
+pourcentage réel.
+
+Lorsque le GPS du véhicule sélectionné est actif, le détail de télémétrie du
+bandeau est rechargé toutes les 60 secondes. Une puissance réseau absente est
+présentée comme `Connecté` si le traceur reste en ligne. Pour la batterie, le
+pourcentage natif est prioritaire ; à défaut, un niveau indicatif est calculé
+depuis la tension interne comprise entre 3,3 V et 4,2 V. En stationnement, la
+quatrième mesure affiche la durée écoulée depuis `parking_started_at` plutôt que
+la vitesse nulle, avec un `P` encerclé et un format compact tel que `2h30min`.
 
 L’adresse affichée dans le détail doit correspondre aux coordonnées et au temps GPS sélectionnés par le serveur. Le client ne fabrique pas d’adresse et ne doit pas réutiliser l’adresse d’un autre véhicule.
 

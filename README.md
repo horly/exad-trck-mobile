@@ -14,6 +14,8 @@ L’application permet aux comptes clients et aux superadministrateurs autorisé
 - Carte Google Maps avec filtres d’état, recherche et actualisation toutes les 10 secondes.
 - Animation des véhicules en mouvement entre deux positions GPS.
 - Détails du véhicule, emplacement, conducteur, alimentation, GSM, diagnostic et OBD/CAN.
+- Immobilisation moteur sécurisée avec un bouton dynamique, uniquement pour les traceurs compatibles et les utilisateurs autorisés.
+- Consultation des chauffeurs et gestion des départements selon le rôle du compte.
 - Ouverture directe de la carte et focus du marqueur depuis les listes d’activité et de véhicules.
 - Consultation des trajets, traces cartographiques et événements.
 - Alertes corporate avec distinction des nouvelles et badge de navigation dynamique.
@@ -31,7 +33,7 @@ L’application permet aux comptes clients et aux superadministrateurs autorisé
 | `geolocator` | Position ponctuelle du téléphone |
 | `flutter_test` | Tests de modèles et tests de widgets |
 
-La version applicative courante est définie dans `pubspec.yaml` : `1.0.0+2`.
+La version applicative courante est définie dans `pubspec.yaml` : `1.0.0+17`.
 
 ## Prérequis
 
@@ -127,6 +129,7 @@ La documentation du contrat serveur de référence se trouve également dans le 
 - Aucun secret serveur ne doit être embarqué dans l’application.
 - Les jetons sont stockés avec `flutter_secure_storage`, jamais dans des préférences ordinaires.
 - Les anciennes paires de jetons sont remplacées après chaque rafraîchissement.
+- Les requêtes concurrentes partagent une seule rotation de jetons afin d’éviter les fermetures de session intermittentes.
 - Une réponse `401` provoque une tentative de renouvellement ; un échec ferme la session locale.
 - Les permissions et le cloisonnement de flotte sont imposés par le serveur et reflétés dans l’interface.
 - Les clés Google Maps doivent être restreintes au package Android ou au bundle iOS et aux API strictement nécessaires.

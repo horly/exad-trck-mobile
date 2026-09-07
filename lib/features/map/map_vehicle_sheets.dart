@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/localization/app_localizations.dart';
@@ -11,7 +13,6 @@ Future<void> showVehicleDetailsSheet(
   SessionController session,
   VehicleData vehicle,
 ) {
-  final future = session.vehicleDetails(vehicle.id);
   final showTechnicalDetails = session.user?.isSuperadmin == true;
   return showModalBottomSheet<void>(
     context: context,
@@ -24,21 +25,175 @@ Future<void> showVehicleDetailsSheet(
       icon: showTechnicalDetails
           ? Icons.memory_outlined
           : Icons.directions_car_filled_outlined,
-      child: FutureBuilder<VehicleDetailData>(
-        future: future,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) return _SheetError(snapshot.error);
-          return _VehicleDetailsContent(
-            data: snapshot.data!,
-            showDriverIdentifier: showTechnicalDetails,
-          );
-        },
+      child: _VehicleDetailsLoader(
+        session: session,
+        vehicle: vehicle,
+        showDriverIdentifier: showTechnicalDetails,
       ),
     ),
   );
+}
+
+class _VehicleDetailsLoader extends StatefulWidget {
+  const _VehicleDetailsLoader({
+    required this.session,
+    required this.vehicle,
+    required this.showDriverIdentifier,
+  });
+
+  final SessionController session;
+  final VehicleData vehicle;
+  final bool showDriverIdentifier;
+
+  @override
+  State<_VehicleDetailsLoader> createState() => _VehicleDetailsLoaderState();
+}
+
+class _VehicleDetailsLoaderState extends State<_VehicleDetailsLoader> {
+  late Future<VehicleDetailData> _future;
+  VehicleDetailData? _lastData;
+  Timer? _commandStatusTimer;
+  bool _awaitingCommandCompletion = false;
+  bool _commanding = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _loadDetails();
+  }
+
+  @override
+  void dispose() {
+    _commandStatusTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<VehicleDetailData>(
+      future: _future,
+      builder: (context, snapshot) {
+        final data = snapshot.data ?? _lastData;
+        if (data == null && snapshot.connectionState != ConnectionState.done) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (data == null && snapshot.hasError) {
+          return _SheetError(snapshot.error, onRetry: _retryDetails);
+        }
+        return _VehicleDetailsContent(
+          data: data!,
+          showDriverIdentifier: widget.showDriverIdentifier,
+          commandBusy: _commanding,
+          onEngineCommand: _confirmEngineCommand,
+        );
+      },
+    );
+  }
+
+  Future<void> _confirmEngineCommand(int output, String action) async {
+    final activate = action == 'immobilize';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+          activate ? Icons.toggle_on_outlined : Icons.toggle_off_outlined,
+          color: activate ? AppTheme.danger : AppTheme.success,
+          size: 38,
+        ),
+        title: Text(
+          context
+              .tr(
+                activate
+                    ? 'output_confirm_activate'
+                    : 'output_confirm_deactivate',
+              )
+              .replaceAll(':number', '$output'),
+          textAlign: TextAlign.center,
+        ),
+        content: activate
+            ? Text(
+                context.tr('output_safety_help'),
+                textAlign: TextAlign.center,
+              )
+            : null,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(context.tr('cancel')),
+          ),
+          FilledButton(
+            style: activate
+                ? FilledButton.styleFrom(backgroundColor: AppTheme.danger)
+                : null,
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(
+              context.tr(activate ? 'activate_output' : 'deactivate_output'),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _commanding = true);
+    try {
+      final message = await widget.session.requestEngineCommand(
+        widget.vehicle.id,
+        action,
+        output,
+      );
+      if (!mounted) return;
+      if (message.isNotEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
+      _awaitingCommandCompletion = true;
+      setState(() {
+        _future = _loadDetails();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _commanding = false);
+    }
+  }
+
+  Future<VehicleDetailData> _loadDetails() async {
+    try {
+      final data = await widget.session.vehicleDetails(widget.vehicle.id);
+      if (!mounted) return data;
+
+      _lastData = data;
+      _awaitingCommandCompletion = data.engineControl?.busy == true;
+      _scheduleCommandStatusRefresh();
+
+      return data;
+    } catch (_) {
+      if (mounted && _awaitingCommandCompletion) {
+        _scheduleCommandStatusRefresh();
+      }
+      rethrow;
+    }
+  }
+
+  void _scheduleCommandStatusRefresh() {
+    _commandStatusTimer?.cancel();
+    if (!_awaitingCommandCompletion || !mounted) return;
+
+    _commandStatusTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      setState(() => _future = _loadDetails());
+    });
+  }
+
+  void _retryDetails() {
+    if (!mounted) return;
+    setState(() => _future = _loadDetails());
+  }
 }
 
 Future<void> showVehicleEventsSheet(
@@ -456,10 +611,14 @@ class _VehicleDetailsContent extends StatelessWidget {
   const _VehicleDetailsContent({
     required this.data,
     required this.showDriverIdentifier,
+    required this.commandBusy,
+    required this.onEngineCommand,
   });
 
   final VehicleDetailData data;
   final bool showDriverIdentifier;
+  final bool commandBusy;
+  final void Function(int output, String action) onEngineCommand;
 
   @override
   Widget build(BuildContext context) {
@@ -470,6 +629,7 @@ class _VehicleDetailsContent extends StatelessWidget {
     final gsm = data.gsm;
     final diagnostic = data.diagnostic;
     final obd = data.obdCan;
+    final engineControl = data.engineControl;
     Widget canStateLine({
       required IconData icon,
       required String labelKey,
@@ -950,6 +1110,105 @@ class _VehicleDetailsContent extends StatelessWidget {
                 ],
               ),
       ),
+      if (engineControl?.isVisible == true)
+        _DetailSection(
+          title: context.tr('tracker_outputs'),
+          icon: Icons.tune,
+          accent: Theme.of(context).colorScheme.primary,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: engineControl!.outputs
+                .map((output) {
+                  final active = output.active;
+                  final action = output.nextAction;
+
+                  return Container(
+                    margin: EdgeInsets.only(
+                      bottom: output.number == engineControl.outputs.last.number
+                          ? 0
+                          : 8,
+                    ),
+                    padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color:
+                                (active == true
+                                        ? AppTheme.success
+                                        : AppTheme.muted)
+                                    .withValues(alpha: .1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            active == true
+                                ? Icons.toggle_on_outlined
+                                : Icons.toggle_off_outlined,
+                            color: active == true
+                                ? AppTheme.success
+                                : AppTheme.muted,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${context.tr('tracker_output')} #${output.number}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                context.tr(
+                                  output.busy
+                                      ? 'output_command_pending'
+                                      : active == null
+                                      ? 'output_unknown'
+                                      : active
+                                      ? 'output_active'
+                                      : 'output_inactive',
+                                ),
+                                style: TextStyle(
+                                  color: active == true
+                                      ? AppTheme.success
+                                      : AppTheme.muted,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch.adaptive(
+                          value: active ?? false,
+                          activeTrackColor: AppTheme.success,
+                          onChanged:
+                              commandBusy ||
+                                  output.busy ||
+                                  active == null ||
+                                  action == null
+                              ? null
+                              : (_) => onEngineCommand(output.number, action),
+                        ),
+                      ],
+                    ),
+                  );
+                })
+                .toList(growable: false),
+          ),
+        ),
       _DetailSection(
         title: context.tr('recent_events'),
         icon: Icons.notifications_active_outlined,
@@ -1530,15 +1789,27 @@ class _TripCompactMetric extends StatelessWidget {
 }
 
 class _SheetError extends StatelessWidget {
-  const _SheetError(this.error);
+  const _SheetError(this.error, {this.onRetry});
 
   final Object? error;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
-    return EmptyState(
-      icon: Icons.error_outline,
-      message: error?.toString() ?? 'Erreur',
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EmptyState(
+          icon: Icons.error_outline,
+          message: error?.toString() ?? 'Erreur',
+        ),
+        if (onRetry != null)
+          OutlinedButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: Text(context.tr('retry')),
+          ),
+      ],
     );
   }
 }

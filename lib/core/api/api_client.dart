@@ -41,6 +41,7 @@ class ApiClient {
   final TokenStore _tokenStore;
   final http.Client _client;
   final String _baseUrl;
+  Future<AuthTokens>? _refreshInFlight;
 
   Future<AuthenticationResult> login({
     required String email,
@@ -120,9 +121,76 @@ class ApiClient {
     return drivers;
   }
 
+  Future<DepartmentCollectionData> departments() async {
+    final departments = <DepartmentData>[];
+    var page = 1;
+    var lastPage = 1;
+    DepartmentCollectionData? collection;
+
+    do {
+      final result = await _authorized(
+        'GET',
+        '/departments',
+        query: {'per_page': '100', 'page': '$page'},
+      );
+      collection = DepartmentCollectionData.fromMap(result.body);
+      departments.addAll(collection.departments);
+      lastPage = intOf(mapOf(result.body['meta'])['last_page']);
+      if (lastPage < 1) lastPage = 1;
+      page++;
+    } while (page <= lastPage);
+
+    return DepartmentCollectionData(
+      departments: departments,
+      fleets: collection.fleets,
+      canManage: collection.canManage,
+      canDelete: collection.canDelete,
+    );
+  }
+
+  Future<String> saveDepartment({
+    int? id,
+    required int fleetId,
+    required String name,
+    String? code,
+    String? description,
+    required String status,
+  }) async {
+    final result = await _authorized(
+      id == null ? 'POST' : 'PUT',
+      id == null ? '/departments' : '/departments/$id',
+      body: {
+        'fleet_id': fleetId,
+        'name': name,
+        'code': code,
+        'description': description,
+        'status': status,
+      },
+    );
+    return result.body['message']?.toString() ?? '';
+  }
+
+  Future<String> deleteDepartment(int id) async {
+    final result = await _authorized('DELETE', '/departments/$id');
+    return result.body['message']?.toString() ?? '';
+  }
+
   Future<VehicleDetailData> vehicleDetails(int vehicleId) async {
     final result = await _authorized('GET', '/vehicles/$vehicleId/details');
     return VehicleDetailData.fromMap(mapOf(result.body['data']));
+  }
+
+  Future<String> requestEngineCommand(
+    int vehicleId,
+    String action,
+    int output,
+  ) async {
+    final result = await _authorized(
+      'POST',
+      '/vehicles/$vehicleId/engine-commands',
+      body: {'action': action, 'output': output, 'confirmation': true},
+    );
+    return result.body['message']?.toString() ?? '';
   }
 
   Future<List<VehicleEventData>> vehicleEvents(int vehicleId) async {
@@ -178,6 +246,7 @@ class ApiClient {
     String method,
     String path, {
     Map<String, String>? query,
+    Map<String, dynamic>? body,
     bool allowRefresh = true,
   }) async {
     final tokens = await _tokenStore.readTokens();
@@ -194,18 +263,35 @@ class ApiClient {
         method,
         path,
         query: query,
+        body: body,
         bearerToken: tokens.accessToken,
       );
     } on ApiException catch (error) {
       if (!allowRefresh || !error.isUnauthorized) rethrow;
-      final refreshed = await _refresh(tokens.refreshToken);
+      final current = await _tokenStore.readTokens();
+      final refreshed =
+          current != null && current.accessToken != tokens.accessToken
+          ? current
+          : await _refreshSingleFlight(tokens.refreshToken);
       return _send(
         method,
         path,
         query: query,
+        body: body,
         bearerToken: refreshed.accessToken,
       );
     }
+  }
+
+  Future<AuthTokens> _refreshSingleFlight(String refreshToken) {
+    final existing = _refreshInFlight;
+    if (existing != null) return existing;
+
+    final future = _refresh(refreshToken);
+    _refreshInFlight = future;
+    return future.whenComplete(() {
+      if (identical(_refreshInFlight, future)) _refreshInFlight = null;
+    });
   }
 
   Future<AuthTokens> _refresh(String refreshToken) async {
@@ -226,7 +312,10 @@ class ApiClient {
       await _tokenStore.writeTokens(tokens);
       return tokens;
     } on ApiException {
-      await _tokenStore.clearTokens();
+      final current = await _tokenStore.readTokens();
+      if (current?.refreshToken == refreshToken) {
+        await _tokenStore.clearTokens();
+      }
       rethrow;
     }
   }
@@ -267,6 +356,16 @@ class ApiClient {
     try {
       final future = switch (method) {
         'POST' => _client.post(
+          uri,
+          headers: headers,
+          body: body == null ? null : jsonEncode(body),
+        ),
+        'PUT' => _client.put(
+          uri,
+          headers: headers,
+          body: body == null ? null : jsonEncode(body),
+        ),
+        'DELETE' => _client.delete(
           uri,
           headers: headers,
           body: body == null ? null : jsonEncode(body),

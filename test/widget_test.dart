@@ -3,6 +3,7 @@ import 'package:exad_tracking_mobile/core/localization/app_localizations.dart';
 import 'package:exad_tracking_mobile/core/models/app_models.dart';
 import 'package:exad_tracking_mobile/core/session/session_controller.dart';
 import 'package:exad_tracking_mobile/features/dashboard/superadmin_dashboard_screen.dart';
+import 'package:exad_tracking_mobile/features/departments/departments_screen.dart';
 import 'package:exad_tracking_mobile/features/drivers/drivers_screen.dart';
 import 'package:exad_tracking_mobile/features/vehicles/vehicles_screen.dart';
 import 'package:exad_tracking_mobile/shared/widgets/ui_components.dart';
@@ -53,11 +54,19 @@ void main() {
     expect(find.text('Bonjour Admin'), findsOneWidget);
     expect(find.text('EXAD CARS · EX-CRS'), findsOneWidget);
     expect(find.byIcon(Icons.dashboard), findsOneWidget);
-    expect(find.widgetWithText(Badge, '1'), findsWidgets);
+    final navigation = find.byType(NavigationBar);
+    expect(
+      find.descendant(of: navigation, matching: find.text('Véhicules')),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: navigation, matching: find.text('Alertes')),
+      findsNothing,
+    );
 
-    await tester.tap(find.text('Véhicules').last);
+    await tester.tap(find.text('Véhicules').first);
     await tester.pumpAndSettle();
-    expect(find.text('1 véhicule(s) dans votre flotte'), findsOneWidget);
+    expect(find.byType(VehiclesScreen), findsOneWidget);
   });
 
   testWidgets('affiche une console distincte au superadmin', (tester) async {
@@ -107,6 +116,63 @@ void main() {
 
     expect(requestedVehicle?.id, 1);
     expect(find.byType(BottomSheet), findsNothing);
+  });
+
+  testWidgets('réduit et réaffiche les véhicules d’une flotte', (tester) async {
+    final session = _session(role: 'superadmin')
+      ..vehicles = const [
+        VehicleData(
+          id: 1,
+          name: 'Toyota Hiace',
+          registration: '1234BV01',
+          status: 'active',
+          trackingStatus: 'online',
+          isOnline: true,
+          speed: 18,
+          fleet: FleetInfo(id: 1, name: 'EXAD CARS', code: 'EX-CRS'),
+        ),
+        VehicleData(
+          id: 2,
+          name: 'Suzuki Horly',
+          registration: '6052BE01',
+          status: 'active',
+          trackingStatus: 'online',
+          isOnline: true,
+          speed: 0,
+          fleet: FleetInfo(id: 2, name: 'Horly Flotte', code: 'HAM'),
+        ),
+      ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: Scaffold(
+          body: VehiclesScreen(session: session, onOpenMap: (_) {}),
+        ),
+      ),
+    );
+
+    expect(find.text('EXAD CARS (1)'), findsOneWidget);
+    expect(find.text('Toyota Hiace'), findsOneWidget);
+    expect(find.text('Suzuki Horly'), findsOneWidget);
+
+    await tester.tap(find.text('EXAD CARS (1)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Toyota Hiace'), findsNothing);
+    expect(find.text('Suzuki Horly'), findsOneWidget);
+
+    await tester.tap(find.text('EXAD CARS (1)'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Toyota Hiace'), findsOneWidget);
   });
 
   testWidgets('ouvre la carte depuis l’activité du parc', (tester) async {
@@ -258,6 +324,48 @@ void main() {
     expect(find.byIcon(Icons.edit_outlined), findsNothing);
     expect(find.byIcon(Icons.delete_outline), findsNothing);
     expect(find.byIcon(Icons.add), findsNothing);
+  });
+
+  testWidgets('affiche les départements en lecture seule pour un utilisateur', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: DepartmentsScreen(
+          session: _session(role: 'user'),
+          loadDepartments: () async => const DepartmentCollectionData(
+            departments: [
+              DepartmentData(
+                id: 4,
+                name: 'Operations',
+                code: 'OPS',
+                status: 'active',
+                driversCount: 3,
+                fleet: FleetInfo(id: 1, name: 'EXAD CARS', code: 'EX-CRS'),
+              ),
+            ],
+            fleets: [],
+            canManage: false,
+            canDelete: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Operations'), findsOneWidget);
+    expect(find.text('3 chauffeur(s)'), findsOneWidget);
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(find.byIcon(Icons.delete_outline), findsNothing);
+    expect(find.byType(FloatingActionButton), findsNothing);
   });
 }
 

@@ -127,30 +127,32 @@ class AppTheme {
         ),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        height: 72,
-        backgroundColor: branding.primary,
-        indicatorColor: branding.secondary,
+        height: 68,
+        backgroundColor: scheme.surface,
+        indicatorColor: branding.secondary.withValues(alpha: dark ? .22 : .12),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           return IconThemeData(
             color: states.contains(WidgetState.selected)
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.72),
+                ? branding.primary
+                : themeMuted,
           );
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           return TextStyle(
             color: states.contains(WidgetState.selected)
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.72),
+                ? branding.primary
+                : themeMuted,
             fontSize: 10,
-            fontWeight: FontWeight.w700,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w800
+                : FontWeight.w600,
           );
         }),
-        elevation: 0,
-        shadowColor: Colors.transparent,
+        elevation: 8,
+        shadowColor: const Color(0x260F172A),
         surfaceTintColor: Colors.transparent,
         overlayColor: WidgetStatePropertyAll(
-          Colors.white.withValues(alpha: 0.08),
+          branding.primary.withValues(alpha: 0.06),
         ),
       ),
       dividerColor: themeBorder,

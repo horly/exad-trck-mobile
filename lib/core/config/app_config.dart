@@ -8,7 +8,7 @@ class AppConfig {
 
   static const appBuildNumber = int.fromEnvironment(
     'APP_BUILD_NUMBER',
-    defaultValue: 10,
+    defaultValue: 17,
   );
 
   static String get fullVersion => '$appVersion+$appBuildNumber';

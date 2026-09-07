@@ -9,6 +9,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/models/app_models.dart';
 import '../../core/session/session_controller.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/ui_components.dart';
 import 'map_vehicle_sheets.dart';
 
@@ -48,28 +49,31 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   static const liveRefreshInterval = Duration(seconds: 10);
+  static const selectedTelemetryRefreshInterval = Duration(minutes: 1);
   static const markerAnimationDuration = Duration(seconds: 5);
   static const initialStreetZoom = 15.5;
 
   final searchController = TextEditingController();
   GoogleMapController? mapController;
   VehicleData? selectedVehicle;
+  VehicleDetailData? selectedVehicleDetails;
   VehicleTripData? selectedTrip;
   List<VehicleData> liveVehicles = const [];
   final Map<int, LatLng> displayedPositions = {};
   final Map<int, _VehicleMotion> motions = {};
   final Map<_VehicleMarkerState, BitmapDescriptor> markerIcons = {};
   Timer? refreshTimer;
+  Timer? selectedTelemetryTimer;
   Timer? animationTimer;
   String query = '';
   String statusFilter = 'all';
-  bool panelVisible = true;
+  bool panelVisible = false;
   bool myLocationEnabled = false;
   bool autoRefresh = true;
   bool refreshing = false;
   DateTime? lastUpdatedAt;
   DateTime? lastCameraFollowAt;
-  int handledFocusRequestId = -1;
+  int handledFocusRequestId = 0;
 
   List<VehicleData> get positionedVehicles => liveVehicles
       .where((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
@@ -114,8 +118,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (oldWidget.active != widget.active) {
       if (widget.active) {
         _startLiveRefresh();
+        _startSelectedTelemetryRefresh();
       } else {
         refreshTimer?.cancel();
+        selectedTelemetryTimer?.cancel();
       }
     }
     if (widget.active && oldWidget.focusRequestId != widget.focusRequestId) {
@@ -129,15 +135,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && widget.active) {
       _startLiveRefresh();
+      _startSelectedTelemetryRefresh();
       return;
     }
     refreshTimer?.cancel();
+    selectedTelemetryTimer?.cancel();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     refreshTimer?.cancel();
+    selectedTelemetryTimer?.cancel();
     animationTimer?.cancel();
     searchController.dispose();
     mapController?.dispose();
@@ -152,6 +161,22 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       liveRefreshInterval,
       (_) => unawaited(_refreshLive()),
     );
+  }
+
+  void _startSelectedTelemetryRefresh() {
+    selectedTelemetryTimer?.cancel();
+    final vehicle = selectedVehicle;
+    if (!widget.active || vehicle == null) return;
+
+    unawaited(_loadSelectedVehicleTelemetry(vehicle.id));
+    selectedTelemetryTimer = Timer.periodic(selectedTelemetryRefreshInterval, (
+      _,
+    ) {
+      final current = selectedVehicle;
+      if (widget.active && current != null && current.hasAvailableGps) {
+        unawaited(_loadSelectedVehicleTelemetry(current.id));
+      }
+    });
   }
 
   Future<void> _refreshLive({bool fit = false, bool showError = false}) async {
@@ -465,46 +490,21 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final vehicles = positionedVehicles;
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
-          child: ScreenTitle(
-            title: context.tr('map'),
-            subtitle: context.trFormat('positioned_vehicle_count', {
-              'count': vehicles.length,
-            }),
-            trailing: IconButton.filledTonal(
-              tooltip: context.tr('refresh'),
-              onPressed: refreshing
-                  ? null
-                  : () => _refreshLive(showError: true),
-              icon: refreshing
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh),
-            ),
+    if (vehicles.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(18),
+        child: SectionPanel(
+          child: EmptyState(
+            icon: Icons.location_off_outlined,
+            message: context.tr('no_position'),
           ),
         ),
-        Expanded(
-          child: vehicles.isEmpty
-              ? Padding(
-                  padding: const EdgeInsets.all(18),
-                  child: SectionPanel(
-                    child: EmptyState(
-                      icon: Icons.location_off_outlined,
-                      message: context.tr('no_position'),
-                    ),
-                  ),
-                )
-              : LayoutBuilder(
-                  builder: (context, constraints) =>
-                      _buildMap(context, constraints, vehicles),
-                ),
-        ),
-      ],
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          _buildMap(context, constraints, vehicles),
     );
   }
 
@@ -515,7 +515,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   ) {
     final compact = constraints.maxWidth < 720;
     final panelWidth = compact
-        ? (constraints.maxWidth - 32).clamp(260.0, 330.0).toDouble()
+        ? (constraints.maxWidth * .82).clamp(280.0, 360.0).toDouble()
         : 340.0;
     final selectedPanelLeft = panelVisible && !compact ? panelWidth + 32 : 16.0;
 
@@ -546,22 +546,37 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             },
           ),
         ),
+        if (compact && panelVisible)
+          Positioned(
+            left: panelWidth,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => panelVisible = false),
+              child: ColoredBox(color: Colors.black.withValues(alpha: .18)),
+            ),
+          ),
         AnimatedPositioned(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
-          left: panelVisible ? 16 : -panelWidth - 12,
-          top: 16,
-          bottom: 16,
+          left: panelVisible ? (compact ? 0 : 16) : -panelWidth - 12,
+          top: compact ? 0 : 16,
+          bottom: compact ? 0 : 16,
           width: panelWidth,
           child: _VehicleMapPanel(
+            compact: compact,
+            userName: widget.session.user?.name ?? '',
+            userEmail: widget.session.user?.email ?? '',
             searchController: searchController,
             vehicles: filteredVehicles,
-            summaryVehicles: positionedVehicles,
             selectedVehicle: selectedVehicle,
             statusFilter: statusFilter,
             autoRefresh: autoRefresh,
             refreshing: refreshing,
             lastUpdatedAt: lastUpdatedAt,
+            onRefresh: () => _refreshLive(showError: true),
             onSearch: (value) => setState(() => query = value),
             onStatusChanged: (value) => setState(() => statusFilter = value),
             onAutoRefreshChanged: (value) {
@@ -576,7 +591,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             onClose: () => setState(() => panelVisible = false),
           ),
         ),
-        if (!compact || !panelVisible)
+        if (!compact)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             left: panelVisible ? panelWidth + 24 : 16,
@@ -586,20 +601,66 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   ? context.tr('hide_map_menu')
                   : context.tr('show_map_menu'),
               icon: panelVisible ? Icons.chevron_left : Icons.menu,
-              onPressed: () => setState(() {
+              onPressed: () {
                 final showPanel = !panelVisible;
-                panelVisible = showPanel;
-                if (compact && showPanel) {
+                if (compact && showPanel) selectedTelemetryTimer?.cancel();
+                setState(() {
+                  panelVisible = showPanel;
+                  if (compact && showPanel) {
+                    selectedVehicle = null;
+                    selectedTrip = null;
+                  }
+                });
+              },
+            ),
+          ),
+        if (compact && !panelVisible)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            child: _MapMobileTopBar(
+              refreshing: refreshing,
+              selectedVehicle: selectedVehicle,
+              onMenu: () {
+                selectedTelemetryTimer?.cancel();
+                setState(() {
                   selectedVehicle = null;
                   selectedTrip = null;
-                }
-              }),
+                  panelVisible = true;
+                });
+              },
+              onRefresh: refreshing
+                  ? null
+                  : () => _refreshLive(showError: true),
+              onDetails: selectedVehicle == null
+                  ? null
+                  : () => showVehicleDetailsSheet(
+                      context,
+                      widget.session,
+                      selectedVehicle!,
+                    ),
+              onTrips: selectedVehicle == null
+                  ? null
+                  : () => showVehicleTripsSheet(
+                      context,
+                      widget.session,
+                      selectedVehicle!,
+                      _showTrip,
+                    ),
+              onEvents: selectedVehicle == null
+                  ? null
+                  : () => showVehicleEventsSheet(
+                      context,
+                      widget.session,
+                      selectedVehicle!,
+                    ),
             ),
           ),
         if (!compact || !panelVisible)
           Positioned(
             right: 16,
-            top: 16,
+            top: compact ? (selectedVehicle == null ? 72 : 142) : 16,
             child: Column(
               children: [
                 _MapIconButton(
@@ -616,7 +677,19 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               ],
             ),
           ),
-        if (selectedVehicle != null && (!compact || !panelVisible))
+        if (compact && selectedVehicle != null && !panelVisible)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 58,
+            child: _SelectedVehicleTopStrip(
+              vehicle: selectedVehicle!,
+              details: selectedVehicleDetails?.vehicle.id == selectedVehicle!.id
+                  ? selectedVehicleDetails
+                  : null,
+            ),
+          ),
+        if (selectedVehicle != null && !compact && !panelVisible)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             left: selectedPanelLeft,
@@ -624,10 +697,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             bottom: 16,
             child: _SelectedVehiclePanel(
               vehicle: selectedVehicle!,
-              onClose: () => setState(() {
-                selectedVehicle = null;
-                selectedTrip = null;
-              }),
+              onClose: () {
+                selectedTelemetryTimer?.cancel();
+                setState(() {
+                  selectedVehicle = null;
+                  selectedTrip = null;
+                });
+              },
               onDetails: () => showVehicleDetailsSheet(
                 context,
                 widget.session,
@@ -782,6 +858,9 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   void _selectVehicle(VehicleData vehicle, {bool compact = false}) {
     setState(() {
       selectedVehicle = vehicle;
+      if (selectedVehicleDetails?.vehicle.id != vehicle.id) {
+        selectedVehicleDetails = null;
+      }
       selectedTrip = null;
       if (compact || MediaQuery.sizeOf(context).width < 720) {
         panelVisible = false;
@@ -799,6 +878,17 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         ),
       ),
     );
+    _startSelectedTelemetryRefresh();
+  }
+
+  Future<void> _loadSelectedVehicleTelemetry(int vehicleId) async {
+    try {
+      final details = await widget.session.vehicleDetails(vehicleId);
+      if (!mounted || selectedVehicle?.id != vehicleId) return;
+      setState(() => selectedVehicleDetails = details);
+    } catch (_) {
+      // The live map remains usable when optional telemetry is unavailable.
+    }
   }
 
   void _handleFocusRequest() {
@@ -811,6 +901,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
     if (requested == null) {
       if (mapController == null) return;
+      selectedTelemetryTimer?.cancel();
       setState(() {
         selectedVehicle = null;
         selectedTrip = null;
@@ -1020,14 +1111,17 @@ class _VehicleMotion {
 
 class _VehicleMapPanel extends StatelessWidget {
   const _VehicleMapPanel({
+    required this.compact,
+    required this.userName,
+    required this.userEmail,
     required this.searchController,
     required this.vehicles,
-    required this.summaryVehicles,
     required this.selectedVehicle,
     required this.statusFilter,
     required this.autoRefresh,
     required this.refreshing,
     required this.lastUpdatedAt,
+    required this.onRefresh,
     required this.onSearch,
     required this.onStatusChanged,
     required this.onAutoRefreshChanged,
@@ -1035,14 +1129,17 @@ class _VehicleMapPanel extends StatelessWidget {
     required this.onClose,
   });
 
+  final bool compact;
+  final String userName;
+  final String userEmail;
   final TextEditingController searchController;
   final List<VehicleData> vehicles;
-  final List<VehicleData> summaryVehicles;
   final VehicleData? selectedVehicle;
   final String statusFilter;
   final bool autoRefresh;
   final bool refreshing;
   final DateTime? lastUpdatedAt;
+  final VoidCallback onRefresh;
   final ValueChanged<String> onSearch;
   final ValueChanged<String> onStatusChanged;
   final ValueChanged<bool> onAutoRefreshChanged;
@@ -1051,48 +1148,133 @@ class _VehicleMapPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final groupedVehicles = <String, List<VehicleData>>{};
+    for (final vehicle in vehicles) {
+      final fleetName = vehicle.fleet?.name.trim();
+      final groupName = fleetName?.isNotEmpty == true
+          ? fleetName!
+          : context.tr('vehicles');
+      groupedVehicles.putIfAbsent(groupName, () => []).add(vehicle);
+    }
+
     return Material(
-      color: Theme.of(context).colorScheme.surface,
-      elevation: 3,
-      shadowColor: const Color(0x220F172A),
-      borderRadius: BorderRadius.circular(8),
+      color: scheme.surface,
+      elevation: compact ? 12 : 3,
+      shadowColor: const Color(0x440F172A),
+      borderRadius: compact ? BorderRadius.zero : BorderRadius.circular(12),
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 10),
+          Container(
+            height: 58,
+            color: scheme.primary,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Row(
               children: [
-                Icon(
-                  Icons.map_outlined,
-                  color: Theme.of(context).colorScheme.secondary,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    context.tr('map_menu'),
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
                 IconButton(
                   tooltip: context.tr('hide_map_menu'),
                   onPressed: onClose,
-                  icon: const Icon(Icons.close),
+                  color: Colors.white,
+                  icon: const Icon(Icons.arrow_back_rounded),
+                ),
+                Expanded(
+                  child: Text(
+                    context.tr('vehicles'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                PopupMenuButton<String>(
+                  tooltip: context.tr('filter'),
+                  initialValue: statusFilter,
+                  color: scheme.surface,
+                  iconColor: Colors.white,
+                  icon: const Icon(Icons.filter_alt_outlined),
+                  onSelected: onStatusChanged,
+                  itemBuilder: (context) => [
+                    _statusMenuItem(context, 'all', context.tr('all')),
+                    _statusMenuItem(context, 'online', context.tr('online')),
+                    _statusMenuItem(
+                      context,
+                      'moving',
+                      context.tr('moving_now'),
+                    ),
+                    _statusMenuItem(context, 'parking', context.tr('parking')),
+                    _statusMenuItem(context, 'offline', context.tr('offline')),
+                  ],
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 12, 12, 11),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              border: Border(
+                bottom: BorderSide(color: Theme.of(context).dividerColor),
+              ),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 23,
+                  backgroundColor: scheme.secondary.withValues(alpha: .14),
+                  foregroundColor: scheme.primary,
+                  child: Text(
+                    _initials(userName),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        userName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        userEmail,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 9.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: context.tr('refresh'),
+                  visualDensity: VisualDensity.compact,
+                  onPressed: refreshing ? null : onRefresh,
+                  icon: refreshing
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.sync_rounded),
+                ),
+              ],
+            ),
+          ),
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
             child: Column(
               children: [
-                _MapStatusFilters(
-                  vehicles: summaryVehicles,
-                  selectedStatus: statusFilter,
-                  onSelected: onStatusChanged,
-                ),
-                const SizedBox(height: 12),
                 TextField(
                   controller: searchController,
                   onChanged: onSearch,
@@ -1100,9 +1282,10 @@ class _VehicleMapPanel extends StatelessWidget {
                     hintText: context.tr('search_vehicle'),
                     prefixIcon: const Icon(Icons.search),
                     isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 10),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Icon(
@@ -1117,11 +1300,11 @@ class _VehicleMapPanel extends StatelessWidget {
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
-                    Text(
-                      context.tr('live_tracking'),
-                      style: Theme.of(context).textTheme.labelMedium,
+                    Switch.adaptive(
+                      value: autoRefresh,
+                      onChanged: onAutoRefreshChanged,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    Switch(value: autoRefresh, onChanged: onAutoRefreshChanged),
                   ],
                 ),
               ],
@@ -1133,24 +1316,60 @@ class _VehicleMapPanel extends StatelessWidget {
                     icon: Icons.search_off,
                     message: context.tr('no_search_result'),
                   )
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(12, 2, 12, 12),
-                    itemCount: vehicles.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final vehicle = vehicles[index];
-                      final selected = vehicle.id == selectedVehicle?.id;
-                      return CorporateVehicleRow(
-                        vehicle: vehicle,
-                        selected: selected,
-                        onTap: () => onSelect(vehicle),
-                      );
-                    },
+                : ListView(
+                    padding: EdgeInsets.zero,
+                    children: groupedVehicles.entries.expand((entry) {
+                      return <Widget>[
+                        _VehicleGroupHeader(
+                          name: entry.key,
+                          count: entry.value.length,
+                        ),
+                        ...entry.value.map(
+                          (vehicle) => _MapDrawerVehicleRow(
+                            vehicle: vehicle,
+                            selected: vehicle.id == selectedVehicle?.id,
+                            onTap: () => onSelect(vehicle),
+                          ),
+                        ),
+                      ];
+                    }).toList(),
                   ),
           ),
         ],
       ),
     );
+  }
+
+  PopupMenuItem<String> _statusMenuItem(
+    BuildContext context,
+    String value,
+    String label,
+  ) {
+    return PopupMenuItem(
+      value: value,
+      child: Row(
+        children: [
+          SizedBox(
+            width: 24,
+            child: statusFilter == value
+                ? Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.secondary,
+                  )
+                : null,
+          ),
+          const SizedBox(width: 6),
+          Text(label),
+        ],
+      ),
+    );
+  }
+
+  String _initials(String value) {
+    final parts = value.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return 'EX';
+    return parts.take(2).map((part) => part[0].toUpperCase()).join();
   }
 
   String _updatedLabel(BuildContext context) {
@@ -1164,117 +1383,375 @@ class _VehicleMapPanel extends StatelessWidget {
   }
 }
 
-class _MapStatusFilters extends StatelessWidget {
-  const _MapStatusFilters({
-    required this.vehicles,
-    required this.selectedStatus,
-    required this.onSelected,
-  });
+class _VehicleGroupHeader extends StatelessWidget {
+  const _VehicleGroupHeader({required this.name, required this.count});
 
-  final List<VehicleData> vehicles;
-  final String selectedStatus;
-  final ValueChanged<String> onSelected;
+  final String name;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
-    final stats = [
-      (
-        'all',
-        context.tr('all'),
-        Icons.directions_car_filled_outlined,
-        vehicles.length,
-        const Color(0xFF2563EB),
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 28,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      color: scheme.primary.withValues(alpha: .07),
+      alignment: Alignment.centerLeft,
+      child: Text(
+        '$name ($count)',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+        ),
       ),
-      (
-        'online',
-        context.tr('online'),
-        Icons.wifi,
-        vehicles.where((vehicle) => vehicle.isOnline).length,
-        const Color(0xFF07966F),
-      ),
-      (
-        'moving',
-        context.tr('moving_now'),
-        Icons.navigation_rounded,
-        vehicles.where((vehicle) => vehicle.isMoving).length,
-        const Color(0xFF229BD8),
-      ),
-      (
-        'parking',
-        context.tr('parking'),
-        Icons.local_parking_rounded,
-        vehicles.where((vehicle) => vehicle.isParking).length,
-        const Color(0xFF7C3AED),
-      ),
-      (
-        'offline',
-        context.tr('offline'),
-        Icons.wifi_off_rounded,
-        vehicles.where((vehicle) => !vehicle.isOnline).length,
-        const Color(0xFFE98A00),
-      ),
-    ];
+    );
+  }
+}
 
-    return Row(
-      children: stats.indexed.map((entry) {
-        final index = entry.$1;
-        final stat = entry.$2;
-        final selected = selectedStatus == stat.$1;
+class _MapDrawerVehicleRow extends StatelessWidget {
+  const _MapDrawerVehicleRow({
+    required this.vehicle,
+    required this.selected,
+    required this.onTap,
+  });
 
-        return Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(right: index == stats.length - 1 ? 0 : 4),
-            child: Semantics(
-              button: true,
-              selected: selected,
-              label: '${stat.$2}: ${stat.$4}',
-              child: Tooltip(
-                message: stat.$2,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => onSelected(stat.$1),
-                    borderRadius: BorderRadius.circular(8),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      decoration: BoxDecoration(
-                        color: stat.$5.withValues(alpha: selected ? .16 : .06),
-                        border: Border.all(
-                          color: stat.$5.withValues(
-                            alpha: selected ? .65 : .18,
-                          ),
-                          width: selected ? 1.5 : 1,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(stat.$3, size: 18, color: stat.$5),
-                            const SizedBox(width: 3),
-                            Text(
-                              '${stat.$4}',
-                              style: Theme.of(context).textTheme.labelMedium
-                                  ?.copyWith(
-                                    color: stat.$5,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+  final VehicleData vehicle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final statusColor = vehicle.isMoving
+        ? const Color(0xFF229BD8)
+        : vehicle.isOnline
+        ? const Color(0xFF22C55E)
+        : const Color(0xFFF59E0B);
+
+    return Material(
+      color: selected
+          ? scheme.secondary.withValues(alpha: .12)
+          : scheme.surface,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 57),
+          padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: Theme.of(context).dividerColor),
+              left: BorderSide(
+                color: selected ? scheme.secondary : Colors.transparent,
+                width: 3,
               ),
             ),
           ),
-        );
-      }).toList(),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: .1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.directions_car_filled_outlined,
+                  size: 19,
+                  color: statusColor,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      vehicle.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      vehicle.registration,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 9.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    width: 9,
+                    height: 9,
+                    decoration: BoxDecoration(
+                      color: statusColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    '${vehicle.speed} km/h',
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectedVehicleTopStrip extends StatelessWidget {
+  const _SelectedVehicleTopStrip({required this.vehicle, this.details});
+
+  final VehicleData vehicle;
+  final VehicleDetailData? details;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final gpsQualityPercent =
+        vehicle.gpsQualityPercent ?? details?.location?.gpsQualityPercent;
+    final networkSignalPercent =
+        vehicle.networkSignalPercent ?? details?.gsm?.signalPercent;
+    final batteryLevelPercent =
+        vehicle.batteryLevelPercent ??
+        details?.power?.effectiveBatteryLevelPercent;
+    final gpsAvailable =
+        vehicle.hasAvailableGps ||
+        (vehicle.isOnline && (gpsQualityPercent ?? 0) > 0);
+    final isParking = vehicle.isParking || details?.location?.ignition == false;
+    final gpsColor = gpsAvailable ? AppTheme.success : AppTheme.danger;
+    final networkColor = _levelColor(networkSignalPercent);
+    final batteryColor = _levelColor(batteryLevelPercent);
+
+    return Material(
+      color: scheme.surface,
+      elevation: 3,
+      shadowColor: const Color(0x260F172A),
+      child: SizedBox(
+        height: 70,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.navigation_rounded,
+                    size: 18,
+                    color: vehicle.isMoving
+                        ? scheme.secondary
+                        : scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      vehicle.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurface,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _lastSignalLabel(context),
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              Row(
+                children: [
+                  Expanded(
+                    child: _TrackingMetric(
+                      icon: gpsAvailable
+                          ? Icons.gps_fixed_rounded
+                          : Icons.gps_off_rounded,
+                      value: context.tr(
+                        gpsAvailable ? 'gps_active' : 'gps_unavailable',
+                      ),
+                      color: gpsColor,
+                    ),
+                  ),
+                  Expanded(
+                    child: _TrackingMetric(
+                      icon: vehicle.isOnline
+                          ? Icons.signal_cellular_alt_rounded
+                          : Icons.signal_cellular_off_rounded,
+                      value: networkSignalPercent != null
+                          ? _percent(networkSignalPercent)
+                          : vehicle.isOnline
+                          ? context.tr('connected')
+                          : context.tr('not_available_short'),
+                      color: networkSignalPercent == null && vehicle.isOnline
+                          ? AppTheme.success
+                          : networkColor,
+                    ),
+                  ),
+                  Expanded(
+                    child: _TrackingMetric(
+                      icon: Icons.battery_5_bar_rounded,
+                      value: batteryLevelPercent == null
+                          ? context.tr('not_available_short')
+                          : _percent(batteryLevelPercent),
+                      color: batteryColor,
+                    ),
+                  ),
+                  Expanded(
+                    child: _TrackingMetric(
+                      icon: isParking
+                          ? Icons.local_parking_rounded
+                          : Icons.speed_rounded,
+                      value: _movementValue(context),
+                      color: scheme.onSurfaceVariant,
+                      circledIcon: isParking,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _percent(int? value) {
+    return value == null ? '--%' : '${value.clamp(0, 100)}%';
+  }
+
+  Color _levelColor(int? value) {
+    if (value == null) return AppTheme.muted;
+    if (value >= 50) return AppTheme.success;
+    if (value >= 20) return AppTheme.warning;
+    return AppTheme.danger;
+  }
+
+  String _movementValue(BuildContext context) {
+    final isParking = vehicle.isParking || details?.location?.ignition == false;
+    if (!isParking) return '${vehicle.speed} km/h';
+
+    final startedAt = DateTime.tryParse(
+      details?.location?.parkingStartedAt ?? '',
+    )?.toLocal();
+    if (startedAt == null) return context.tr('parking');
+
+    final elapsed = DateTime.now().difference(startedAt);
+    final minutes = elapsed.isNegative ? 0 : elapsed.inMinutes;
+    if (minutes < 1) return '< 1min';
+    if (minutes < 60) return '${minutes}min';
+
+    final hours = minutes ~/ 60;
+    final remainingMinutes = minutes % 60;
+    if (hours < 24) {
+      return '${hours}h${remainingMinutes.toString().padLeft(2, '0')}min';
+    }
+
+    final days = hours ~/ 24;
+    final remainingHours = hours % 24;
+    return '${days}j ${remainingHours}h${remainingMinutes.toString().padLeft(2, '0')}min';
+  }
+
+  String _lastSignalLabel(BuildContext context) {
+    final parsed = DateTime.tryParse(vehicle.lastSignalAt ?? '')?.toLocal();
+    if (parsed == null) return '';
+    final difference = DateTime.now().difference(parsed);
+    if (difference.isNegative || difference.inSeconds < 5) {
+      return context.tr('signal_just_now');
+    }
+    if (difference.inMinutes < 1) {
+      return context.trFormat('signal_seconds_ago', {
+        'count': difference.inSeconds,
+      });
+    }
+    if (difference.inHours < 1) {
+      return context.trFormat('signal_minutes_ago', {
+        'count': difference.inMinutes,
+      });
+    }
+    return context.trFormat('signal_hours_ago', {'count': difference.inHours});
+  }
+}
+
+class _TrackingMetric extends StatelessWidget {
+  const _TrackingMetric({
+    required this.icon,
+    required this.value,
+    required this.color,
+    this.circledIcon = false,
+  });
+
+  final IconData icon;
+  final String value;
+  final Color color;
+  final bool circledIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        if (circledIcon)
+          Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: color, width: 1.4),
+            ),
+            alignment: Alignment.center,
+            child: Icon(icon, size: 12, color: color),
+          )
+        else
+          Icon(icon, size: 17, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1455,6 +1932,118 @@ class _MapIconButton extends StatelessWidget {
         onPressed: onPressed,
         icon: Icon(icon),
       ),
+    );
+  }
+}
+
+class _MapMobileTopBar extends StatelessWidget {
+  const _MapMobileTopBar({
+    required this.refreshing,
+    required this.selectedVehicle,
+    required this.onMenu,
+    required this.onRefresh,
+    required this.onDetails,
+    required this.onTrips,
+    required this.onEvents,
+  });
+
+  final bool refreshing;
+  final VehicleData? selectedVehicle;
+  final VoidCallback onMenu;
+  final VoidCallback? onRefresh;
+  final VoidCallback? onDetails;
+  final VoidCallback? onTrips;
+  final VoidCallback? onEvents;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.primary,
+      elevation: 4,
+      shadowColor: const Color(0x330F172A),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        height: 58,
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: context.tr('show_map_menu'),
+              onPressed: onMenu,
+              color: Colors.white,
+              icon: const Icon(Icons.menu_rounded, size: 24),
+            ),
+            Expanded(
+              child: Text(
+                context.tr('map'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 19,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -.2,
+                ),
+              ),
+            ),
+            if (selectedVehicle == null)
+              IconButton(
+                tooltip: context.tr('refresh'),
+                onPressed: onRefresh,
+                color: Colors.white,
+                icon: refreshing
+                    ? const SizedBox.square(
+                        dimension: 17,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.refresh_rounded),
+              )
+            else ...[
+              _MapHeaderAction(
+                tooltip: context.tr('details'),
+                icon: Icons.info_outline_rounded,
+                onPressed: onDetails,
+              ),
+              _MapHeaderAction(
+                tooltip: context.tr('trips'),
+                icon: Icons.alt_route_rounded,
+                onPressed: onTrips,
+              ),
+              _MapHeaderAction(
+                tooltip: context.tr('events'),
+                icon: Icons.notifications_none_rounded,
+                onPressed: onEvents,
+              ),
+            ],
+            const SizedBox(width: 4),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MapHeaderAction extends StatelessWidget {
+  const _MapHeaderAction({
+    required this.tooltip,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 34, height: 44),
+      padding: EdgeInsets.zero,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 20, color: Colors.white),
     );
   }
 }

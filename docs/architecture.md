@@ -53,7 +53,7 @@ Au démarrage, les jetons sont lus depuis le stockage sécurisé. Si une session
 1. La connexion transmet l’e-mail, le mot de passe, la plateforme et l’identifiant stable de l’appareil.
 2. Si la 2FA est requise, aucun jeton d’accès n’est enregistré avant validation du challenge.
 3. Après authentification, les jetons d’accès et de rafraîchissement sont stockés avec `flutter_secure_storage`.
-4. Lorsqu’une requête authentifiée reçoit une erreur non autorisée, `ApiClient` tente une seule rotation avec le jeton de rafraîchissement.
+4. Lorsqu’une ou plusieurs requêtes authentifiées reçoivent une erreur non autorisée, `ApiClient` partage une rotation unique avec le jeton de rafraîchissement.
 5. La nouvelle paire remplace l’ancienne. Si la rotation échoue, les jetons locaux sont supprimés.
 
 ## Navigation et permissions
@@ -62,17 +62,24 @@ Au démarrage, les jetons sont lus depuis le stockage sécurisé. Si une session
 
 - dashboard client ou supervision superadmin ;
 - carte, seulement avec la permission `map_view` ;
-- véhicules ;
-- alertes ;
 - profil et préférences.
+
+La barre inférieure ne contient donc que « Carte », « Accueil » et « Plus » pour
+un client autorisé à consulter la carte. Les véhicules et les alertes s’ouvrent
+comme des pages secondaires depuis les indicateurs du dashboard, avec une action
+de retour explicite.
 
 Depuis les listes « Activité de la flotte », « Activité du parc » et « Véhicules », un appui ne charge pas une seconde liste ni une fiche de détails intermédiaire. `HomeShell` crée une demande de focus unique, active l’onglet Carte, puis `MapScreen` retrouve le véhicule dans le snapshot live, centre la caméra sur son marqueur et affiche sa fiche d’actions. Les détails, trajets et événements restent accessibles depuis cette fiche cartographique.
 
 Les indicateurs des dashboards sont également des points de navigation : « Flottes » rejoint la répartition, « Véhicules » ouvre le parc complet, « En ligne » ouvre le parc avec son filtre actif, « À vérifier » ouvre les alertes et, sur le dashboard client, « En déplacement » ouvre la carte en vue générale.
 
-La destination « Alertes » affiche le nombre d’alertes dont le statut serveur est `new`. Le badge est masqué à zéro et plafonné visuellement à `99+`. La liste conserve la valeur réelle dans son en-tête, permet de filtrer les nouvelles et les distingue par un badge « Nouveau », une bordure teintée et la couleur de sévérité.
+La page « Alertes » conserve la valeur réelle des nouvelles alertes, permet de
+les filtrer et les distingue par un badge « Nouveau », une bordure teintée et la
+couleur de sévérité.
 
 La visibilité d’un écran n’est pas une mesure de sécurité suffisante. Le serveur reste responsable de l’autorisation et du cloisonnement par flotte sur chaque endpoint.
+
+L’espace Plus donne accès aux chauffeurs en lecture seule et aux départements. La gestion des départements est activée pour l’admin client et le superadmin, tandis que l’utilisateur normal conserve une vue sans action. Dans le détail d’un véhicule, les sorties du traceur n’apparaissent que lorsque le serveur confirme simultanément sa compatibilité et l’autorisation du compte. DOUT1 et DOUT2 sont affichées et commandées séparément ; une commande ne doit jamais modifier la sortie voisine.
 
 ## Carte et suivi direct
 

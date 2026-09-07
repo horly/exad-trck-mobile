@@ -36,8 +36,6 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int selectedIndex = 0;
   int mapFocusRequestId = 0;
   VehicleData? mapFocusVehicle;
-  int vehicleFilterRequestId = 0;
-  VehicleFilter requestedVehicleFilter = VehicleFilter.all;
   Timer? workspaceRefreshTimer;
   AppLifecycleState? appLifecycleState;
 
@@ -70,71 +68,61 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final canViewMap = widget.session.user?.hasPermission('map_view') == true;
     final superadmin = widget.session.user?.isSuperadmin == true;
-    final destinations = <_Destination>[
-      _Destination(
-        label: context.tr(superadmin ? 'supervision' : 'home'),
-        icon: superadmin
-            ? Icons.admin_panel_settings_outlined
-            : Icons.dashboard_outlined,
-        selectedIcon: superadmin ? Icons.admin_panel_settings : Icons.dashboard,
-        builder: () => superadmin
-            ? SuperadminDashboardScreen(
-                session: widget.session,
-                onOpenVehicles: () => _openVehicles(VehicleFilter.all),
-                onOpenOnlineVehicles: () => _openVehicles(VehicleFilter.online),
-                onOpenAlerts: _openAlerts,
-                onOpenVehicleMap: canViewMap ? _openVehicleOnMap : null,
-              )
-            : DashboardScreen(
-                session: widget.session,
-                onOpenVehicles: () => _openVehicles(VehicleFilter.all),
-                onOpenOnlineVehicles: () => _openVehicles(VehicleFilter.online),
-                onOpenMap: canViewMap ? _openMapOverview : null,
-                onOpenAlerts: _openAlerts,
-                onOpenVehicleMap: canViewMap ? _openVehicleOnMap : null,
-              ),
+    final dashboardDestination = _Destination(
+      label: context.tr(superadmin ? 'supervision' : 'home'),
+      icon: superadmin
+          ? Icons.admin_panel_settings_outlined
+          : Icons.dashboard_outlined,
+      selectedIcon: superadmin ? Icons.admin_panel_settings : Icons.dashboard,
+      builder: () => superadmin
+          ? SuperadminDashboardScreen(
+              session: widget.session,
+              onOpenVehicles: () => _openVehicles(VehicleFilter.all),
+              onOpenOnlineVehicles: () => _openVehicles(VehicleFilter.online),
+              onOpenAlerts: _openAlerts,
+              onOpenVehicleMap: canViewMap ? _openVehicleOnMap : null,
+            )
+          : DashboardScreen(
+              session: widget.session,
+              onOpenVehicles: () => _openVehicles(VehicleFilter.all),
+              onOpenOnlineVehicles: () => _openVehicles(VehicleFilter.online),
+              onOpenMap: canViewMap ? _openMapOverview : null,
+              onOpenAlerts: _openAlerts,
+              onOpenVehicleMap: canViewMap ? _openVehicleOnMap : null,
+            ),
+    );
+    final mapDestination = _Destination(
+      label: context.tr('map'),
+      icon: Icons.map_outlined,
+      selectedIcon: Icons.map,
+      builder: () => MapScreen(
+        session: widget.session,
+        active: selectedIndex == (superadmin ? 1 : 0),
+        focusVehicle: mapFocusVehicle,
+        focusRequestId: mapFocusRequestId,
       ),
-      if (canViewMap)
-        _Destination(
-          label: context.tr('map'),
-          icon: Icons.map_outlined,
-          selectedIcon: Icons.map,
-          builder: () => MapScreen(
-            session: widget.session,
-            active: selectedIndex == 1,
-            focusVehicle: mapFocusVehicle,
-            focusRequestId: mapFocusRequestId,
-          ),
-        ),
-      _Destination(
-        label: context.tr('vehicles'),
-        icon: Icons.directions_car_outlined,
-        selectedIcon: Icons.directions_car,
-        builder: () => VehiclesScreen(
-          session: widget.session,
-          onOpenMap: canViewMap ? _openVehicleOnMap : null,
-          requestedFilter: requestedVehicleFilter,
-          filterRequestId: vehicleFilterRequestId,
-        ),
+    );
+    final moreDestination = _Destination(
+      label: context.tr('more'),
+      icon: Icons.more_horiz,
+      selectedIcon: Icons.more_horiz,
+      builder: () => MoreScreen(
+        session: widget.session,
+        localeController: widget.localeController,
+        themeController: widget.themeController,
       ),
-      _Destination(
-        label: context.tr('alerts'),
-        icon: Icons.notifications_outlined,
-        selectedIcon: Icons.notifications,
-        badgeCount: widget.session.dashboard.newAlerts,
-        builder: () => AlertsScreen(session: widget.session),
-      ),
-      _Destination(
-        label: context.tr('more'),
-        icon: Icons.more_horiz,
-        selectedIcon: Icons.more_horiz,
-        builder: () => MoreScreen(
-          session: widget.session,
-          localeController: widget.localeController,
-          themeController: widget.themeController,
-        ),
-      ),
-    ];
+    );
+    final destinations = superadmin
+        ? <_Destination>[
+            dashboardDestination,
+            if (canViewMap) mapDestination,
+            moreDestination,
+          ]
+        : <_Destination>[
+            if (canViewMap) mapDestination,
+            dashboardDestination,
+            moreDestination,
+          ];
     if (selectedIndex >= destinations.length) selectedIndex = 0;
 
     return Scaffold(
@@ -159,29 +147,28 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
-          systemNavigationBarColor: widget.session.branding.primary,
+          systemNavigationBarColor: Theme.of(context).colorScheme.surface,
           systemNavigationBarDividerColor: Colors.transparent,
-          systemNavigationBarIconBrightness: Brightness.light,
+          systemNavigationBarIconBrightness:
+              Theme.of(context).brightness == Brightness.dark
+              ? Brightness.light
+              : Brightness.dark,
           systemNavigationBarContrastEnforced: false,
         ),
         child: NavigationBar(
           selectedIndex: selectedIndex,
           onDestinationSelected: (index) {
-            final returningToDashboard = index == 0 && selectedIndex != 0;
+            final dashboardIndex = _dashboardIndex();
+            final returningToDashboard =
+                index == dashboardIndex && selectedIndex != dashboardIndex;
             setState(() => selectedIndex = index);
             if (returningToDashboard) unawaited(_refreshWorkspaceSilently());
           },
           destinations: destinations
               .map(
                 (destination) => NavigationDestination(
-                  icon: _DestinationIcon(
-                    icon: destination.icon,
-                    badgeCount: destination.badgeCount,
-                  ),
-                  selectedIcon: _DestinationIcon(
-                    icon: destination.selectedIcon,
-                    badgeCount: destination.badgeCount,
-                  ),
+                  icon: Icon(destination.icon),
+                  selectedIcon: Icon(destination.selectedIcon),
                   label: destination.label,
                 ),
               )
@@ -192,34 +179,57 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   }
 
   void _openVehicleOnMap(VehicleData vehicle) {
+    final superadmin = widget.session.user?.isSuperadmin == true;
     setState(() {
       mapFocusVehicle = vehicle;
       mapFocusRequestId++;
-      selectedIndex = 1;
+      selectedIndex = superadmin ? 1 : 0;
     });
   }
 
   void _openMapOverview() {
     if (widget.session.user?.hasPermission('map_view') != true) return;
+    final superadmin = widget.session.user?.isSuperadmin == true;
     setState(() {
       mapFocusVehicle = null;
       mapFocusRequestId++;
-      selectedIndex = 1;
+      selectedIndex = superadmin ? 1 : 0;
     });
   }
 
   void _openVehicles(VehicleFilter filter) {
     final canViewMap = widget.session.user?.hasPermission('map_view') == true;
-    setState(() {
-      requestedVehicleFilter = filter;
-      vehicleFilterRequestId++;
-      selectedIndex = canViewMap ? 2 : 1;
-    });
+    final title = context.tr('vehicles');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => _StandaloneSection(
+          title: title,
+          child: VehiclesScreen(
+            session: widget.session,
+            showHeader: false,
+            requestedFilter: filter,
+            onOpenMap: !canViewMap
+                ? null
+                : (vehicle) {
+                    Navigator.of(routeContext).pop();
+                    _openVehicleOnMap(vehicle);
+                  },
+          ),
+        ),
+      ),
+    );
   }
 
   void _openAlerts() {
-    final canViewMap = widget.session.user?.hasPermission('map_view') == true;
-    setState(() => selectedIndex = canViewMap ? 3 : 2);
+    final title = context.tr('alerts');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => _StandaloneSection(
+          title: title,
+          child: AlertsScreen(session: widget.session, showHeader: false),
+        ),
+      ),
+    );
   }
 
   void _startWorkspaceRefresh({bool refreshNow = false}) {
@@ -235,8 +245,32 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     final lifecycleAllowsRefresh =
         appLifecycleState == null ||
         appLifecycleState == AppLifecycleState.resumed;
-    if (!mounted || !lifecycleAllowsRefresh || selectedIndex != 0) return;
+    if (!mounted ||
+        !lifecycleAllowsRefresh ||
+        selectedIndex != _dashboardIndex()) {
+      return;
+    }
     await widget.session.refreshWorkspace(silent: true);
+  }
+
+  int _dashboardIndex() {
+    if (widget.session.user?.isSuperadmin == true) return 0;
+    return widget.session.user?.hasPermission('map_view') == true ? 1 : 0;
+  }
+}
+
+class _StandaloneSection extends StatelessWidget {
+  const _StandaloneSection({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: SafeArea(child: child),
+    );
   }
 }
 
@@ -246,35 +280,10 @@ class _Destination {
     required this.icon,
     required this.selectedIcon,
     required this.builder,
-    this.badgeCount = 0,
   });
 
   final String label;
   final IconData icon;
   final IconData selectedIcon;
   final Widget Function() builder;
-  final int badgeCount;
-}
-
-class _DestinationIcon extends StatelessWidget {
-  const _DestinationIcon({required this.icon, required this.badgeCount});
-
-  final IconData icon;
-  final int badgeCount;
-
-  @override
-  Widget build(BuildContext context) {
-    final countLabel = badgeCount > 99 ? '99+' : '$badgeCount';
-    return Badge(
-      isLabelVisible: badgeCount > 0,
-      label: Text(
-        countLabel,
-        style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800),
-      ),
-      backgroundColor: const Color(0xFFEF4444),
-      textColor: Colors.white,
-      offset: const Offset(8, -6),
-      child: Icon(icon),
-    );
-  }
 }

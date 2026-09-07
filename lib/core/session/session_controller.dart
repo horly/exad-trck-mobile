@@ -56,7 +56,7 @@ class SessionController extends ChangeNotifier {
       }
       await _loadAuthenticatedWorkspace();
     } on ApiException catch (error) {
-      if (error.isUnauthorized) await _tokenStore.clearTokens();
+      if (_closesSession(error)) await _tokenStore.clearTokens();
       message = error.message;
       stage = SessionStage.signedOut;
     } catch (_) {
@@ -141,10 +141,11 @@ class SessionController extends ChangeNotifier {
     message = null;
     if (!silent) notifyListeners();
     try {
+      bootstrap = await _apiClient.bootstrap();
       await _loadWorkspaceData();
     } on ApiException catch (error) {
       message = error.message;
-      if (error.isUnauthorized) {
+      if (_closesSession(error)) {
         await _tokenStore.clearTokens();
         stage = SessionStage.signedOut;
       }
@@ -182,6 +183,32 @@ class SessionController extends ChangeNotifier {
       _apiClient.vehicleDetails(vehicleId);
 
   Future<List<DriverData>> drivers() => _apiClient.drivers();
+
+  Future<DepartmentCollectionData> departments() => _apiClient.departments();
+
+  Future<String> saveDepartment({
+    int? id,
+    required int fleetId,
+    required String name,
+    String? code,
+    String? description,
+    required String status,
+  }) => _apiClient.saveDepartment(
+    id: id,
+    fleetId: fleetId,
+    name: name,
+    code: code,
+    description: description,
+    status: status,
+  );
+
+  Future<String> deleteDepartment(int id) => _apiClient.deleteDepartment(id);
+
+  Future<String> requestEngineCommand(
+    int vehicleId,
+    String action,
+    int output,
+  ) => _apiClient.requestEngineCommand(vehicleId, action, output);
 
   Future<List<VehicleEventData>> vehicleEvents(int vehicleId) =>
       _apiClient.vehicleEvents(vehicleId);
@@ -225,4 +252,8 @@ class SessionController extends ChangeNotifier {
     fieldErrors = const {};
     notifyListeners();
   }
+
+  bool _closesSession(ApiException error) =>
+      error.isUnauthorized ||
+      (error.statusCode == 403 && error.code == 'ACCOUNT_UNAVAILABLE');
 }
