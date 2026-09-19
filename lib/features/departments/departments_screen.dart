@@ -71,18 +71,11 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
     final canManage = _data?.canManage == true;
     return Scaffold(
       appBar: AppBar(title: Text(context.tr('departments'))),
-      floatingActionButton: canManage
-          ? FloatingActionButton.extended(
-              onPressed: _working ? null : () => _openEditor(),
-              icon: const Icon(Icons.add),
-              label: Text(context.tr('new_department')),
-            )
-          : null,
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 96),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 32),
           children: [
             ScreenTitle(
               title: context.tr('departments'),
@@ -98,6 +91,14 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                 prefixIcon: const Icon(Icons.search),
               ),
             ),
+            if (canManage) ...[
+              const SizedBox(height: 12),
+              CorporateAddButton(
+                label: context.tr('new_department'),
+                onPressed: _working ? null : () => _openEditor(),
+                loading: _working,
+              ),
+            ],
             const SizedBox(height: 18),
             if (_data == null && _error == null)
               const Center(
@@ -159,93 +160,84 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
     final saved = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(
-            context.tr(
-              department == null ? 'new_department' : 'edit_department',
-            ),
+        builder: (context, setDialogState) => CorporateFormDialog(
+          title: context.tr(
+            department == null ? 'new_department' : 'edit_department',
           ),
-          content: SizedBox(
-            width: 460,
-            child: SingleChildScrollView(
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (widget.session.user?.isSuperadmin == true) ...[
-                      DropdownButtonFormField<int>(
-                        initialValue: fleetId,
-                        decoration: InputDecoration(
-                          labelText: context.tr('fleet'),
+          subtitle: context.tr('department_form_help'),
+          icon: Icons.account_tree_outlined,
+          formKey: formKey,
+          cancelLabel: context.tr('cancel'),
+          confirmLabel: context.tr('save'),
+          onValidate: () => fleetId != null,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (widget.session.user?.isSuperadmin == true) ...[
+                DropdownButtonFormField<int>(
+                  initialValue: fleetId,
+                  decoration: corporateInputDecoration(
+                    label: context.tr('fleet'),
+                    icon: Icons.corporate_fare_outlined,
+                  ),
+                  items: data.fleets
+                      .map(
+                        (fleet) => DropdownMenuItem(
+                          value: fleet.id,
+                          child: Text(fleet.name),
                         ),
-                        items: data.fleets
-                            .map(
-                              (fleet) => DropdownMenuItem(
-                                value: fleet.id,
-                                child: Text(fleet.name),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) => fleetId = value,
-                        validator: (value) =>
-                            value == null ? context.tr('required') : null,
-                      ),
-                      const SizedBox(height: 12),
-                    ],
-                    TextFormField(
-                      controller: name,
-                      decoration: InputDecoration(
-                        labelText: context.tr('department_name'),
-                      ),
-                      validator: (value) =>
-                          value == null || value.trim().isEmpty
-                          ? context.tr('required')
-                          : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: code,
-                      decoration: InputDecoration(
-                        labelText: context.tr('department_code'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: description,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        labelText: context.tr('description'),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SwitchListTile.adaptive(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(context.tr('active')),
-                      value: active,
-                      onChanged: (value) =>
-                          setDialogState(() => active = value),
-                    ),
-                  ],
+                      )
+                      .toList(),
+                  onChanged: (value) => fleetId = value,
+                  validator: (value) =>
+                      value == null ? context.tr('required') : null,
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextFormField(
+                controller: name,
+                decoration: corporateInputDecoration(
+                  label: context.tr('department_name'),
+                  icon: Icons.account_tree_outlined,
+                ),
+                validator: (value) => value == null || value.trim().isEmpty
+                    ? context.tr('required')
+                    : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: code,
+                decoration: corporateInputDecoration(
+                  label: context.tr('department_code'),
+                  icon: Icons.tag_rounded,
                 ),
               ),
-            ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: description,
+                minLines: 2,
+                maxLines: 4,
+                decoration: corporateInputDecoration(
+                  label: context.tr('description'),
+                  icon: Icons.notes_rounded,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SectionPanel(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                child: SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.check_circle_outline),
+                  title: Text(context.tr('active')),
+                  value: active,
+                  onChanged: (value) => setDialogState(() => active = value),
+                ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(context.tr('cancel')),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (formKey.currentState!.validate() && fleetId != null) {
-                  Navigator.pop(dialogContext, true);
-                }
-              },
-              child: Text(context.tr('save')),
-            ),
-          ],
         ),
       ),
     );

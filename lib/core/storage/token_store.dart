@@ -6,7 +6,15 @@ import '../models/app_models.dart';
 
 class TokenStore {
   TokenStore({FlutterSecureStorage? storage})
-    : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? _persistentStorage;
+
+  static const _persistentStorage = FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      resetOnError: false,
+      migrateOnAlgorithmChange: true,
+      migrateWithBackup: true,
+    ),
+  );
 
   final FlutterSecureStorage _storage;
 

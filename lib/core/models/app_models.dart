@@ -58,6 +58,239 @@ class FleetInfo {
   }
 }
 
+class ManagedAdminData {
+  const ManagedAdminData({
+    required this.id,
+    required this.name,
+    required this.email,
+  });
+
+  final int id;
+  final String name;
+  final String email;
+
+  factory ManagedAdminData.fromMap(Map<String, dynamic> map) =>
+      ManagedAdminData(
+        id: intOf(map['id']),
+        name: map['name']?.toString() ?? '-',
+        email: map['email']?.toString() ?? '-',
+      );
+}
+
+class ManagedFleetData {
+  const ManagedFleetData({
+    required this.id,
+    required this.name,
+    required this.code,
+    required this.status,
+    required this.vehiclesCount,
+    this.description,
+    this.manager,
+  });
+
+  final int id;
+  final String name;
+  final String code;
+  final String? description;
+  final String status;
+  final int vehiclesCount;
+  final ManagedAdminData? manager;
+
+  factory ManagedFleetData.fromMap(Map<String, dynamic> map) =>
+      ManagedFleetData(
+        id: intOf(map['id']),
+        name: map['name']?.toString() ?? '-',
+        code: map['code']?.toString() ?? '-',
+        description: map['description']?.toString(),
+        status: map['status']?.toString() ?? 'inactive',
+        vehiclesCount: intOf(map['vehicles_count']),
+        manager: mapOf(map['manager']).isEmpty
+            ? null
+            : ManagedAdminData.fromMap(mapOf(map['manager'])),
+      );
+}
+
+class ManagedTrackerData {
+  const ManagedTrackerData({
+    required this.id,
+    required this.imei,
+    required this.brand,
+    required this.model,
+    required this.protocol,
+    required this.status,
+    this.name,
+    this.simNumber,
+    this.operatorName,
+    this.fleet,
+    this.vehicle,
+  });
+
+  final int id;
+  final String? name;
+  final String imei;
+  final String brand;
+  final String model;
+  final String? simNumber;
+  final String? operatorName;
+  final String protocol;
+  final String status;
+  final FleetInfo? fleet;
+  final DriverVehicleData? vehicle;
+
+  factory ManagedTrackerData.fromMap(Map<String, dynamic> map) {
+    final fleet = mapOf(map['fleet']);
+    final vehicle = mapOf(map['vehicle']);
+    return ManagedTrackerData(
+      id: intOf(map['id']),
+      name: map['name']?.toString(),
+      imei: map['imei']?.toString() ?? '-',
+      brand: map['brand']?.toString() ?? '-',
+      model: map['model']?.toString() ?? '-',
+      simNumber: map['sim_number']?.toString(),
+      operatorName: map['operator_name']?.toString(),
+      protocol: map['protocol']?.toString() ?? 'TCP',
+      status: map['status']?.toString() ?? 'inactive',
+      fleet: fleet.isEmpty ? null : FleetInfo.fromMap(fleet),
+      vehicle: vehicle.isEmpty ? null : DriverVehicleData.fromMap(vehicle),
+    );
+  }
+}
+
+class FleetManagementData {
+  const FleetManagementData({
+    required this.fleets,
+    required this.vehicles,
+    required this.trackers,
+    required this.vehicleTypes,
+    required this.trackerModels,
+    required this.protocols,
+    required this.assignableAdmins,
+  });
+
+  final List<ManagedFleetData> fleets;
+  final List<VehicleData> vehicles;
+  final List<ManagedTrackerData> trackers;
+  final List<String> vehicleTypes;
+  final Map<String, List<String>> trackerModels;
+  final List<String> protocols;
+  final List<ManagedAdminData> assignableAdmins;
+
+  factory FleetManagementData.fromMap(Map<String, dynamic> map) {
+    final catalogs = mapOf(map['catalogs']);
+    final rawModels = mapOf(catalogs['tracker_models']);
+    return FleetManagementData(
+      fleets: listOfMaps(
+        map['fleets'],
+      ).map(ManagedFleetData.fromMap).toList(growable: false),
+      vehicles: listOfMaps(
+        map['vehicles'],
+      ).map(VehicleData.fromMap).toList(growable: false),
+      trackers: listOfMaps(
+        map['trackers'],
+      ).map(ManagedTrackerData.fromMap).toList(growable: false),
+      vehicleTypes: (catalogs['vehicle_types'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toList(growable: false),
+      trackerModels: rawModels.map(
+        (key, value) => MapEntry(
+          key,
+          (value as List? ?? const [])
+              .map((item) => item.toString())
+              .toList(growable: false),
+        ),
+      ),
+      protocols: (catalogs['protocols'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toList(growable: false),
+      assignableAdmins: listOfMaps(
+        map['assignable_admins'],
+      ).map(ManagedAdminData.fromMap).toList(growable: false),
+    );
+  }
+}
+
+class ManagedUserData {
+  const ManagedUserData({
+    required this.id,
+    required this.name,
+    required this.email,
+    required this.role,
+    required this.status,
+    required this.permissions,
+    required this.canUpdate,
+    required this.canDelete,
+    this.phone,
+    this.address,
+    this.fleet,
+  });
+
+  final int id;
+  final String name;
+  final String email;
+  final String? phone;
+  final String? address;
+  final String role;
+  final String status;
+  final List<String> permissions;
+  final FleetInfo? fleet;
+  final bool canUpdate;
+  final bool canDelete;
+
+  factory ManagedUserData.fromMap(Map<String, dynamic> map) {
+    final fleet = mapOf(map['fleet']);
+    return ManagedUserData(
+      id: intOf(map['id']),
+      name: map['name']?.toString() ?? '-',
+      email: map['email']?.toString() ?? '-',
+      phone: map['phone']?.toString(),
+      address: map['address']?.toString(),
+      role: map['role']?.toString() ?? 'user',
+      status: map['status']?.toString() ?? 'inactive',
+      permissions: (map['permissions'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toList(growable: false),
+      fleet: fleet.isEmpty ? null : FleetInfo.fromMap(fleet),
+      canUpdate: map['can_update'] == true,
+      canDelete: map['can_delete'] == true,
+    );
+  }
+}
+
+class UserManagementData {
+  const UserManagementData({
+    required this.users,
+    required this.fleets,
+    required this.roles,
+    required this.permissions,
+    required this.canCreate,
+  });
+
+  final List<ManagedUserData> users;
+  final List<FleetInfo> fleets;
+  final List<String> roles;
+  final List<String> permissions;
+  final bool canCreate;
+
+  factory UserManagementData.fromMap(Map<String, dynamic> map) {
+    final management = mapOf(map['management']);
+    return UserManagementData(
+      users: listOfMaps(
+        map['data'],
+      ).map(ManagedUserData.fromMap).toList(growable: false),
+      fleets: listOfMaps(
+        management['fleets'],
+      ).map(FleetInfo.fromMap).toList(growable: false),
+      roles: (management['roles'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toList(growable: false),
+      permissions: (management['permissions'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toList(growable: false),
+      canCreate: management['can_create'] == true,
+    );
+  }
+}
+
 class AppUser {
   const AppUser({
     required this.id,
@@ -66,6 +299,7 @@ class AppUser {
     required this.role,
     required this.permissions,
     required this.twoFactorEnabled,
+    this.management = const {},
     this.phone,
     this.photoUrl,
     this.fleet,
@@ -80,6 +314,7 @@ class AppUser {
   final FleetInfo? fleet;
   final Map<String, bool> permissions;
   final bool twoFactorEnabled;
+  final Map<String, bool> management;
 
   factory AppUser.fromMap(Map<String, dynamic> map) {
     final rawPermissions = mapOf(map['permissions']);
@@ -95,6 +330,9 @@ class AppUser {
       permissions: rawPermissions.map(
         (key, value) => MapEntry(key, value == true),
       ),
+      management: mapOf(
+        map['management'],
+      ).map((key, value) => MapEntry(key, value == true)),
       twoFactorEnabled: map['two_factor_enabled'] == true,
     );
   }
@@ -106,6 +344,14 @@ class AppUser {
   bool get isAdmin => role.toLowerCase() == 'admin';
 
   bool get canManageDepartments => isSuperadmin || isAdmin;
+
+  bool get canManageFleets => management['fleets'] == true;
+
+  bool get canManageVehicles => management['vehicles'] == true;
+
+  bool get canManageTrackers => management['trackers'] == true;
+
+  bool get canManageUsers => management['users'] == true;
 
   String get initials {
     final parts = name.trim().split(RegExp(r'\s+'));
@@ -187,16 +433,44 @@ Color colorFromHex(String? value, Color fallback) {
   return Color(0xFF000000 | parsed);
 }
 
+class NotificationPreferencesData {
+  const NotificationPreferencesData({
+    required this.vehicleEventsEnabled,
+    required this.alertsEnabled,
+  });
+
+  final bool vehicleEventsEnabled;
+  final bool alertsEnabled;
+
+  factory NotificationPreferencesData.fromMap(Map<String, dynamic> map) {
+    return NotificationPreferencesData(
+      vehicleEventsEnabled: map['vehicle_events_enabled'] == true,
+      alertsEnabled: map['alerts_enabled'] == true,
+    );
+  }
+}
+
 class BootstrapData {
-  const BootstrapData({required this.user, required this.branding});
+  const BootstrapData({
+    required this.user,
+    required this.branding,
+    this.notificationPreferences = const NotificationPreferencesData(
+      vehicleEventsEnabled: false,
+      alertsEnabled: false,
+    ),
+  });
 
   final AppUser user;
   final BrandingData branding;
+  final NotificationPreferencesData notificationPreferences;
 
   factory BootstrapData.fromMap(Map<String, dynamic> map) {
     return BootstrapData(
       user: AppUser.fromMap(mapOf(map['user'])),
       branding: BrandingData.fromMap(mapOf(map['branding'])),
+      notificationPreferences: NotificationPreferencesData.fromMap(
+        mapOf(map['notification_preferences']),
+      ),
     );
   }
 }
@@ -224,6 +498,10 @@ class VehicleData {
     this.movement,
     this.brand,
     this.model,
+    this.color,
+    this.year,
+    this.vehicleType = 'passenger_car',
+    this.speedLimitKmh,
     this.address,
     this.latitude,
     this.longitude,
@@ -236,6 +514,10 @@ class VehicleData {
   final String registration;
   final String? brand;
   final String? model;
+  final String? color;
+  final int? year;
+  final String vehicleType;
+  final int? speedLimitKmh;
   final String status;
   final String trackingStatus;
   final bool isOnline;
@@ -272,6 +554,12 @@ class VehicleData {
       registration: map['registration_number']?.toString() ?? '-',
       brand: map['brand']?.toString(),
       model: map['model']?.toString(),
+      color: map['color']?.toString(),
+      year: map['year'] == null ? null : intOf(map['year']),
+      vehicleType: map['type']?.toString() ?? 'passenger_car',
+      speedLimitKmh: map['speed_limit_kmh'] == null
+          ? null
+          : intOf(map['speed_limit_kmh']),
       status: map['status']?.toString() ?? 'inactive',
       trackingStatus: tracking['status']?.toString() ?? 'not_configured',
       isOnline: tracking['online'] == true,
@@ -1030,6 +1318,8 @@ class VehicleEventData {
     required this.type,
     required this.title,
     required this.message,
+    this.vehicle,
+    this.durationSeconds,
     this.startedAt,
     this.endedAt,
     this.latitude,
@@ -1040,6 +1330,8 @@ class VehicleEventData {
   final String type;
   final String title;
   final String message;
+  final String? vehicle;
+  final int? durationSeconds;
   final String? startedAt;
   final String? endedAt;
   final double? latitude;
@@ -1047,11 +1339,16 @@ class VehicleEventData {
 
   factory VehicleEventData.fromMap(Map<String, dynamic> map) {
     final location = mapOf(map['location']);
+    final vehicle = mapOf(map['vehicle']);
     return VehicleEventData(
       id: intOf(map['id']),
       type: map['type']?.toString() ?? 'event',
       title: map['title']?.toString() ?? 'Evenement',
       message: map['message']?.toString() ?? '',
+      vehicle: vehicle['name']?.toString(),
+      durationSeconds: map['duration_seconds'] == null
+          ? null
+          : intOf(map['duration_seconds']),
       startedAt: map['started_at']?.toString(),
       endedAt: map['ended_at']?.toString(),
       latitude: doubleOf(location['latitude']),

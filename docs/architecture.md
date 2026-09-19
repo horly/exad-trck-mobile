@@ -83,6 +83,18 @@ L’espace Plus donne accès aux chauffeurs en lecture seule et aux département
 
 ## Carte et suivi direct
 
+Le panneau Véhicules présente quatre compteurs avec icônes : en ligne, hors ligne, en mouvement et en parking (P encerclé). Les quatre indicateurs sont alignés sur une seule ligne, sans cartes, bordures ni fonds individuels, avec les libellés sous les icônes et les nombres. Ils remplacent le nom et l’adresse e-mail du compte et sont calculés sur le snapshot complet de la carte, indépendamment de la recherche et du filtre. L’actualisation manuelle reste disponible à côté de l’heure de mise à jour.
+
+Chaque en-tête de flotte permet de replier ou développer ses véhicules et conserve le nombre de véhicules visible. Les groupes et leur état sont identifiés par l’ID de flotte et restent stables pendant les actualisations. Une nouvelle recherche développe les groupes pour révéler les résultats.
+
+Les compteurs compacts utilisent quatre pictogrammes Material homogènes placés dans des médaillons circulaires discrets de 28 pixels : connexion verte, déconnexion rouge, direction violette et P bleu. Des séparateurs verticaux fins structurent le bandeau sans encadrer individuellement les statuts. Le nombre est mis en évidence et le libellé reste secondaire. La navigation inférieure reprend la couleur principale du thème, y compris la zone de navigation Android, avec des icônes et libellés contrastés selon la luminosité de cette couleur.
+
+La navigation des écrans authentifiés s'exécute dans un navigateur imbriqué à l'intérieur de `HomeShell`. La barre inférieure reste ainsi visible sur les écrans racines comme sur les listes et détails ouverts depuis le tableau de bord ou le menu Plus. Sélectionner une destination depuis un sous-écran ferme d'abord la pile secondaire puis affiche la destination demandée. Les écrans de connexion et de double authentification restent volontairement hors de cette navigation.
+
+Le menu Plus présente un espace `Gestion du parc` uniquement lorsque le bootstrap fournit les trois capacités `management.fleets`, `management.vehicles` et `management.trackers`. Le superadmin peut y consulter et créer des flottes, choisir un admin responsable disponible, créer des véhicules dans une flotte, puis créer et affecter un traceur à un véhicule encore libre.
+
+Une entrée distincte `Gestion des utilisateurs` dépend de `management.users`. Le superadmin choisit le rôle, la flotte et les permissions des utilisateurs simples. L'admin client ne voit que les utilisateurs simples de sa propre flotte ; même si l'application est modifiée, le serveur force cette flotte et le rôle `user`. Les mots de passe respectent les mêmes exigences que le web et ne sont jamais retournés par l'API. Le serveur contrôle à nouveau le rôle sur chaque endpoint de gestion et demeure la source d'autorité.
+
 La carte charge uniquement les véhicules possédant des coordonnées valides. Quand elle est active et que le suivi direct est activé :
 
 - un snapshot est demandé toutes les 10 secondes ;

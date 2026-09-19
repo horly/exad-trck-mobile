@@ -10,6 +10,7 @@ import '../../core/localization/app_localizations.dart';
 import '../../core/models/app_models.dart';
 import '../../core/session/session_controller.dart';
 import '../../core/theme/app_theme.dart';
+import '../../shared/widgets/fleet_status_icon.dart';
 import '../../shared/widgets/ui_components.dart';
 import 'map_vehicle_sheets.dart';
 
@@ -67,6 +68,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   Timer? animationTimer;
   String query = '';
   String statusFilter = 'all';
+  final Set<String> _collapsedMapFleetKeys = {};
   bool panelVisible = false;
   bool myLocationEnabled = false;
   bool autoRefresh = true;
@@ -513,7 +515,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     BoxConstraints constraints,
     List<VehicleData> vehicles,
   ) {
-    final compact = constraints.maxWidth < 720;
+    final platform = Theme.of(context).platform;
+    final compact =
+        platform == TargetPlatform.android ||
+        platform == TargetPlatform.iOS ||
+        constraints.maxWidth < 720;
     final panelWidth = compact
         ? (constraints.maxWidth * .82).clamp(280.0, 360.0).toDouble()
         : 340.0;
@@ -567,17 +573,25 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           width: panelWidth,
           child: _VehicleMapPanel(
             compact: compact,
-            userName: widget.session.user?.name ?? '',
-            userEmail: widget.session.user?.email ?? '',
+            allVehicles: liveVehicles,
             searchController: searchController,
             vehicles: filteredVehicles,
+            collapsedFleetKeys: _collapsedMapFleetKeys,
+            onToggleFleet: (key) => setState(() {
+              if (!_collapsedMapFleetKeys.add(key)) {
+                _collapsedMapFleetKeys.remove(key);
+              }
+            }),
             selectedVehicle: selectedVehicle,
             statusFilter: statusFilter,
             autoRefresh: autoRefresh,
             refreshing: refreshing,
             lastUpdatedAt: lastUpdatedAt,
             onRefresh: () => _refreshLive(showError: true),
-            onSearch: (value) => setState(() => query = value),
+            onSearch: (value) => setState(() {
+              query = value;
+              if (value.trim().isNotEmpty) _collapsedMapFleetKeys.clear();
+            }),
             onStatusChanged: (value) => setState(() => statusFilter = value),
             onAutoRefreshChanged: (value) {
               setState(() => autoRefresh = value);
@@ -1112,10 +1126,11 @@ class _VehicleMotion {
 class _VehicleMapPanel extends StatelessWidget {
   const _VehicleMapPanel({
     required this.compact,
-    required this.userName,
-    required this.userEmail,
+    required this.allVehicles,
     required this.searchController,
     required this.vehicles,
+    required this.collapsedFleetKeys,
+    required this.onToggleFleet,
     required this.selectedVehicle,
     required this.statusFilter,
     required this.autoRefresh,
@@ -1130,10 +1145,11 @@ class _VehicleMapPanel extends StatelessWidget {
   });
 
   final bool compact;
-  final String userName;
-  final String userEmail;
+  final List<VehicleData> allVehicles;
   final TextEditingController searchController;
   final List<VehicleData> vehicles;
+  final Set<String> collapsedFleetKeys;
+  final ValueChanged<String> onToggleFleet;
   final VehicleData? selectedVehicle;
   final String statusFilter;
   final bool autoRefresh;
@@ -1151,11 +1167,10 @@ class _VehicleMapPanel extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final groupedVehicles = <String, List<VehicleData>>{};
     for (final vehicle in vehicles) {
-      final fleetName = vehicle.fleet?.name.trim();
-      final groupName = fleetName?.isNotEmpty == true
-          ? fleetName!
-          : context.tr('vehicles');
-      groupedVehicles.putIfAbsent(groupName, () => []).add(vehicle);
+      final fleetKey = vehicle.fleet == null
+          ? 'unassigned'
+          : 'fleet-${vehicle.fleet!.id}';
+      groupedVehicles.putIfAbsent(fleetKey, () => []).add(vehicle);
     }
 
     return Material(
@@ -1220,53 +1235,48 @@ class _VehicleMapPanel extends StatelessWidget {
             ),
             child: Row(
               children: [
-                CircleAvatar(
-                  radius: 23,
-                  backgroundColor: scheme.secondary.withValues(alpha: .14),
-                  foregroundColor: scheme.primary,
-                  child: Text(
-                    _initials(userName),
-                    style: const TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                ),
-                const SizedBox(width: 11),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        userName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: scheme.onSurface,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        userEmail,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: scheme.onSurfaceVariant,
-                          fontSize: 9.5,
-                        ),
-                      ),
-                    ],
+                  child: _VehicleStatusTotal(
+                    icon: FleetStatusSymbol.online,
+                    color: const Color(0xFF16A368),
+                    count: allVehicles
+                        .where((vehicle) => vehicle.isOnline)
+                        .length,
+                    label: context.tr('online'),
                   ),
                 ),
-                IconButton(
-                  tooltip: context.tr('refresh'),
-                  visualDensity: VisualDensity.compact,
-                  onPressed: refreshing ? null : onRefresh,
-                  icon: refreshing
-                      ? const SizedBox.square(
-                          dimension: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.sync_rounded),
+                _StatusDivider(color: Theme.of(context).dividerColor),
+                Expanded(
+                  child: _VehicleStatusTotal(
+                    icon: FleetStatusSymbol.offline,
+                    color: const Color(0xFFDC5261),
+                    count: allVehicles
+                        .where((vehicle) => !vehicle.isOnline)
+                        .length,
+                    label: context.tr('offline'),
+                  ),
+                ),
+                _StatusDivider(color: Theme.of(context).dividerColor),
+                Expanded(
+                  child: _VehicleStatusTotal(
+                    icon: FleetStatusSymbol.moving,
+                    color: const Color(0xFF6854C7),
+                    count: allVehicles
+                        .where((vehicle) => vehicle.isMoving)
+                        .length,
+                    label: context.tr('moving_now'),
+                  ),
+                ),
+                _StatusDivider(color: Theme.of(context).dividerColor),
+                Expanded(
+                  child: _VehicleStatusTotal(
+                    icon: FleetStatusSymbol.parked,
+                    color: const Color(0xFF229BD8),
+                    count: allVehicles
+                        .where((vehicle) => vehicle.isParking)
+                        .length,
+                    label: context.tr('parking_total'),
+                  ),
                 ),
               ],
             ),
@@ -1288,10 +1298,17 @@ class _VehicleMapPanel extends StatelessWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(
-                      refreshing ? Icons.sync : Icons.schedule,
-                      size: 17,
-                      color: Theme.of(context).colorScheme.secondary,
+                    IconButton(
+                      tooltip: context.tr('refresh'),
+                      onPressed: refreshing ? null : onRefresh,
+                      visualDensity: VisualDensity.compact,
+                      icon: refreshing
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync_rounded, size: 19),
+                      color: scheme.secondary,
                     ),
                     const SizedBox(width: 7),
                     Expanded(
@@ -1319,18 +1336,26 @@ class _VehicleMapPanel extends StatelessWidget {
                 : ListView(
                     padding: EdgeInsets.zero,
                     children: groupedVehicles.entries.expand((entry) {
+                      final fleetName = entry.value.first.fleet?.name.trim();
+                      final name = fleetName?.isNotEmpty == true
+                          ? fleetName!
+                          : context.tr('vehicles');
+                      final collapsed = collapsedFleetKeys.contains(entry.key);
                       return <Widget>[
                         _VehicleGroupHeader(
-                          name: entry.key,
+                          name: name,
                           count: entry.value.length,
+                          collapsed: collapsed,
+                          onToggle: () => onToggleFleet(entry.key),
                         ),
-                        ...entry.value.map(
-                          (vehicle) => _MapDrawerVehicleRow(
-                            vehicle: vehicle,
-                            selected: vehicle.id == selectedVehicle?.id,
-                            onTap: () => onSelect(vehicle),
+                        if (!collapsed)
+                          ...entry.value.map(
+                            (vehicle) => _MapDrawerVehicleRow(
+                              vehicle: vehicle,
+                              selected: vehicle.id == selectedVehicle?.id,
+                              onTap: () => onSelect(vehicle),
+                            ),
                           ),
-                        ),
                       ];
                     }).toList(),
                   ),
@@ -1366,12 +1391,6 @@ class _VehicleMapPanel extends StatelessWidget {
     );
   }
 
-  String _initials(String value) {
-    final parts = value.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return 'EX';
-    return parts.take(2).map((part) => part[0].toUpperCase()).join();
-  }
-
   String _updatedLabel(BuildContext context) {
     if (refreshing) return context.tr('updating');
     final updated = lastUpdatedAt;
@@ -1383,28 +1402,165 @@ class _VehicleMapPanel extends StatelessWidget {
   }
 }
 
+class _VehicleStatusTotal extends StatelessWidget {
+  const _VehicleStatusTotal({
+    required this.icon,
+    required this.color,
+    required this.count,
+    required this.label,
+  });
+
+  final FleetStatusSymbol icon;
+  final Color color;
+  final int count;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: '$label : $count',
+      excludeSemantics: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              FleetStatusIcon(symbol: icon, color: color),
+              const SizedBox(width: 6),
+              Text(
+                '$count',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontSize: 18,
+                  height: 1,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -.4,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          SizedBox(
+            height: 16,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: .15,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusDivider extends StatelessWidget {
+  const _StatusDivider({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 42,
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      color: color.withValues(alpha: .65),
+    );
+  }
+}
+
 class _VehicleGroupHeader extends StatelessWidget {
-  const _VehicleGroupHeader({required this.name, required this.count});
+  const _VehicleGroupHeader({
+    required this.name,
+    required this.count,
+    required this.collapsed,
+    required this.onToggle,
+  });
 
   final String name;
   final int count;
+  final bool collapsed;
+  final VoidCallback onToggle;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 28,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      color: scheme.primary.withValues(alpha: .07),
-      alignment: Alignment.centerLeft,
-      child: Text(
-        '$name ($count)',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: scheme.onSurfaceVariant,
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
+    return Semantics(
+      button: true,
+      expanded: !collapsed,
+      label: context.trFormat(collapsed ? 'expand_fleet' : 'collapse_fleet', {
+        'name': name,
+      }),
+      child: Material(
+        color: scheme.primary.withValues(alpha: .045),
+        child: InkWell(
+          onTap: onToggle,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.corporate_fare_outlined,
+                    size: 17,
+                    color: scheme.primary,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 7,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: scheme.surface,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: scheme.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  AnimatedRotation(
+                    turns: collapsed ? -.25 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 21,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );

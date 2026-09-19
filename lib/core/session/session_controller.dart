@@ -45,8 +45,13 @@ class SessionController extends ChangeNotifier {
   BrandingData get branding => bootstrap?.branding ?? BrandingData.fallback;
   AppUser? get user => bootstrap?.user;
 
+  void setLanguageCode(String languageCode) {
+    _apiClient.setLanguageCode(languageCode);
+  }
+
   Future<void> initialize() async {
     stage = SessionStage.booting;
+    message = null;
     notifyListeners();
     try {
       final tokens = await _tokenStore.readTokens();
@@ -56,12 +61,18 @@ class SessionController extends ChangeNotifier {
       }
       await _loadAuthenticatedWorkspace();
     } on ApiException catch (error) {
-      if (_closesSession(error)) await _tokenStore.clearTokens();
       message = error.message;
-      stage = SessionStage.signedOut;
+      if (_closesSession(error)) {
+        await _tokenStore.clearTokens();
+        stage = SessionStage.signedOut;
+      } else {
+        // Preserve the persisted session while the server or network is
+        // temporarily unavailable instead of asking the user to sign in.
+        stage = SessionStage.booting;
+      }
     } catch (_) {
-      message = 'La session enregistrée n’a pas pu être restaurée.';
-      stage = SessionStage.signedOut;
+      message = 'La session enregistrée est conservée. Réessayez la connexion.';
+      stage = SessionStage.booting;
     } finally {
       notifyListeners();
     }
@@ -182,6 +193,162 @@ class SessionController extends ChangeNotifier {
   Future<VehicleDetailData> vehicleDetails(int vehicleId) =>
       _apiClient.vehicleDetails(vehicleId);
 
+  Future<FleetManagementData> fleetManagement() => _apiClient.fleetManagement();
+
+  Future<String> createFleet({
+    required String name,
+    required String code,
+    String status = 'active',
+    String? description,
+    int? adminId,
+  }) => _apiClient.createFleet(
+    name: name,
+    code: code,
+    status: status,
+    description: description,
+    adminId: adminId,
+  );
+
+  Future<String> updateFleet({
+    required int id,
+    required String name,
+    required String code,
+    required String status,
+    String? description,
+    int? adminId,
+  }) => _apiClient.updateFleet(
+    id: id,
+    name: name,
+    code: code,
+    status: status,
+    description: description,
+    adminId: adminId,
+  );
+
+  Future<String> deleteFleet(int id) => _apiClient.deleteFleet(id);
+
+  Future<UserManagementData> managedUsers() => _apiClient.managedUsers();
+
+  Future<String> saveManagedUser({
+    int? id,
+    required String name,
+    required String email,
+    required String role,
+    required int fleetId,
+    required List<String> permissions,
+    String? password,
+    String? phone,
+    String? address,
+  }) => _apiClient.saveManagedUser(
+    id: id,
+    name: name,
+    email: email,
+    role: role,
+    fleetId: fleetId,
+    permissions: permissions,
+    password: password,
+    phone: phone,
+    address: address,
+  );
+
+  Future<String> deleteManagedUser(int id) => _apiClient.deleteManagedUser(id);
+
+  Future<String> createVehicle({
+    required int fleetId,
+    required String name,
+    required String registration,
+    required String vehicleType,
+    String status = 'active',
+    String? brand,
+    String? model,
+    String? color,
+    int? year,
+    int? speedLimitKmh,
+  }) => _apiClient.createVehicle(
+    fleetId: fleetId,
+    name: name,
+    registration: registration,
+    vehicleType: vehicleType,
+    status: status,
+    brand: brand,
+    model: model,
+    color: color,
+    year: year,
+    speedLimitKmh: speedLimitKmh,
+  );
+
+  Future<String> updateVehicle({
+    required int id,
+    required int fleetId,
+    required String name,
+    required String registration,
+    required String vehicleType,
+    required String status,
+    String? brand,
+    String? model,
+    String? color,
+    int? year,
+    int? speedLimitKmh,
+  }) => _apiClient.updateVehicle(
+    id: id,
+    fleetId: fleetId,
+    name: name,
+    registration: registration,
+    vehicleType: vehicleType,
+    status: status,
+    brand: brand,
+    model: model,
+    color: color,
+    year: year,
+    speedLimitKmh: speedLimitKmh,
+  );
+
+  Future<String> deleteVehicle(int id) => _apiClient.deleteVehicle(id);
+
+  Future<String> createTracker({
+    required int vehicleId,
+    required String imei,
+    required String brand,
+    required String model,
+    required String protocol,
+    String? name,
+    String? simNumber,
+    String? operatorName,
+  }) => _apiClient.createTracker(
+    vehicleId: vehicleId,
+    imei: imei,
+    brand: brand,
+    model: model,
+    protocol: protocol,
+    name: name,
+    simNumber: simNumber,
+    operatorName: operatorName,
+  );
+
+  Future<String> updateTracker({
+    required int id,
+    required int vehicleId,
+    required String imei,
+    required String brand,
+    required String model,
+    required String protocol,
+    String? name,
+    String? simNumber,
+    String? operatorName,
+  }) => _apiClient.updateTracker(
+    id: id,
+    vehicleId: vehicleId,
+    imei: imei,
+    brand: brand,
+    model: model,
+    protocol: protocol,
+    name: name,
+    simNumber: simNumber,
+    operatorName: operatorName,
+  );
+
+  Future<String> deleteTracker(int id) => _apiClient.deleteTracker(id);
+
   Future<List<DriverData>> drivers() => _apiClient.drivers();
 
   Future<DepartmentCollectionData> departments() => _apiClient.departments();
@@ -212,6 +379,33 @@ class SessionController extends ChangeNotifier {
 
   Future<List<VehicleEventData>> vehicleEvents(int vehicleId) =>
       _apiClient.vehicleEvents(vehicleId);
+
+  Future<List<VehicleEventData>> notificationEvents({int? afterId}) =>
+      _apiClient.notificationEvents(afterId: afterId);
+
+  Future<List<AlertData>> notificationAlerts({int? afterId}) =>
+      _apiClient.notificationAlerts(afterId: afterId);
+
+  Future<void> registerPushDevice({
+    required String token,
+    required String locale,
+    required String appVersion,
+  }) => _apiClient.registerPushDevice(
+    token: token,
+    locale: locale,
+    appVersion: appVersion,
+  );
+
+  Future<NotificationPreferencesData> notificationPreferences() =>
+      _apiClient.notificationPreferences();
+
+  Future<NotificationPreferencesData> updateNotificationPreferences({
+    required bool vehicleEventsEnabled,
+    required bool alertsEnabled,
+  }) => _apiClient.updateNotificationPreferences(
+    vehicleEventsEnabled: vehicleEventsEnabled,
+    alertsEnabled: alertsEnabled,
+  );
 
   Future<VehicleTripsData> vehicleTrips(
     int vehicleId, {

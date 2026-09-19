@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "464248851905",
+    "project_id": "exad-tracking-mobile",
+    "storage_bucket": "exad-tracking-mobile.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:464248851905:android:d33fb845e10a17dd317340",
+        "android_client_info": {
+          "package_name": "com.exad.exad_tracking_mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAuixkPB5--jRFGEZwfcEhiltQdddsZK-8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

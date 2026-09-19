@@ -30,6 +30,11 @@ class AppTheme {
     final themeInk = dark ? const Color(0xFFF1F5F9) : ink;
     final themeMuted = dark ? const Color(0xFF9DABC2) : muted;
     final themeBorder = dark ? const Color(0xFF28354C) : border;
+    final navigationForeground =
+        ThemeData.estimateBrightnessForColor(branding.primary) ==
+            Brightness.dark
+        ? Colors.white
+        : const Color(0xFF111827);
 
     return ThemeData(
       useMaterial3: true,
@@ -128,20 +133,20 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         height: 68,
-        backgroundColor: scheme.surface,
-        indicatorColor: branding.secondary.withValues(alpha: dark ? .22 : .12),
+        backgroundColor: branding.primary,
+        indicatorColor: navigationForeground.withValues(alpha: .16),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           return IconThemeData(
             color: states.contains(WidgetState.selected)
-                ? branding.primary
-                : themeMuted,
+                ? navigationForeground
+                : navigationForeground.withValues(alpha: .72),
           );
         }),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           return TextStyle(
             color: states.contains(WidgetState.selected)
-                ? branding.primary
-                : themeMuted,
+                ? navigationForeground
+                : navigationForeground.withValues(alpha: .72),
             fontSize: 10,
             fontWeight: states.contains(WidgetState.selected)
                 ? FontWeight.w800
@@ -152,7 +157,7 @@ class AppTheme {
         shadowColor: const Color(0x260F172A),
         surfaceTintColor: Colors.transparent,
         overlayColor: WidgetStatePropertyAll(
-          branding.primary.withValues(alpha: 0.06),
+          navigationForeground.withValues(alpha: .08),
         ),
       ),
       dividerColor: themeBorder,

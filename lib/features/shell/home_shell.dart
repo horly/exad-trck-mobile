@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/localization/app_localizations.dart';
 import '../../core/models/app_models.dart';
+import '../../core/notifications/notification_controller.dart';
 import '../../core/session/session_controller.dart';
 import '../../core/theme/theme_controller.dart';
 import '../alerts/alerts_screen.dart';
@@ -12,6 +13,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../dashboard/superadmin_dashboard_screen.dart';
 import '../map/map_screen.dart';
 import '../more/more_screen.dart';
+import '../notifications/notifications_screen.dart';
 import '../vehicles/vehicles_screen.dart';
 
 class HomeShell extends StatefulWidget {
@@ -20,11 +22,13 @@ class HomeShell extends StatefulWidget {
     required this.session,
     required this.localeController,
     required this.themeController,
+    required this.notifications,
   });
 
   final SessionController session;
   final LocaleController localeController;
   final ThemeController themeController;
+  final NotificationController notifications;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -33,10 +37,13 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   static const workspaceRefreshInterval = Duration(seconds: 10);
 
+  final GlobalKey<NavigatorState> _contentNavigatorKey =
+      GlobalKey<NavigatorState>();
   int selectedIndex = 0;
   int mapFocusRequestId = 0;
   VehicleData? mapFocusVehicle;
   Timer? workspaceRefreshTimer;
+  StreamSubscription<NotificationOpenRequest>? notificationOpenSubscription;
   AppLifecycleState? appLifecycleState;
 
   @override
@@ -45,6 +52,15 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     appLifecycleState = WidgetsBinding.instance.lifecycleState;
     _startWorkspaceRefresh();
+    unawaited(widget.notifications.attachSession(widget.session));
+    notificationOpenSubscription = widget.notifications.openRequests.listen(
+      _handleNotificationOpen,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final pending = widget.notifications.takePendingOpenRequest();
+      if (pending != null) _openNotifications(pending);
+    });
   }
 
   @override
@@ -52,6 +68,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
     appLifecycleState = state;
     if (state == AppLifecycleState.resumed) {
       _startWorkspaceRefresh(refreshNow: true);
+      unawaited(widget.notifications.attachSession(widget.session));
     } else {
       workspaceRefreshTimer?.cancel();
     }
@@ -60,6 +77,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     workspaceRefreshTimer?.cancel();
+    unawaited(notificationOpenSubscription?.cancel());
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -110,6 +128,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         session: widget.session,
         localeController: widget.localeController,
         themeController: widget.themeController,
+        notifications: widget.notifications,
       ),
     );
     final destinations = superadmin
@@ -135,11 +154,20 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
                 color: widget.session.branding.secondary,
               ),
             Expanded(
-              child: IndexedStack(
-                index: selectedIndex,
-                children: destinations
-                    .map((destination) => destination.builder())
-                    .toList(),
+              child: Navigator(
+                key: _contentNavigatorKey,
+                pages: [
+                  MaterialPage<void>(
+                    key: const ValueKey('authenticated-shell-content'),
+                    child: IndexedStack(
+                      index: selectedIndex,
+                      children: destinations
+                          .map((destination) => destination.builder())
+                          .toList(),
+                    ),
+                  ),
+                ],
+                onDidRemovePage: (_) {},
               ),
             ),
           ],
@@ -147,10 +175,13 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
-          systemNavigationBarColor: Theme.of(context).colorScheme.surface,
+          systemNavigationBarColor: Theme.of(context).colorScheme.primary,
           systemNavigationBarDividerColor: Colors.transparent,
           systemNavigationBarIconBrightness:
-              Theme.of(context).brightness == Brightness.dark
+              ThemeData.estimateBrightnessForColor(
+                    Theme.of(context).colorScheme.primary,
+                  ) ==
+                  Brightness.dark
               ? Brightness.light
               : Brightness.dark,
           systemNavigationBarContrastEnforced: false,
@@ -158,6 +189,9 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
         child: NavigationBar(
           selectedIndex: selectedIndex,
           onDestinationSelected: (index) {
+            _contentNavigatorKey.currentState?.popUntil(
+              (route) => route.isFirst,
+            );
             final dashboardIndex = _dashboardIndex();
             final returningToDashboard =
                 index == dashboardIndex && selectedIndex != dashboardIndex;
@@ -200,7 +234,7 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   void _openVehicles(VehicleFilter filter) {
     final canViewMap = widget.session.user?.hasPermission('map_view') == true;
     final title = context.tr('vehicles');
-    Navigator.of(context).push(
+    _contentNavigatorKey.currentState?.push(
       MaterialPageRoute<void>(
         builder: (routeContext) => _StandaloneSection(
           title: title,
@@ -222,11 +256,40 @@ class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
 
   void _openAlerts() {
     final title = context.tr('alerts');
-    Navigator.of(context).push(
+    _contentNavigatorKey.currentState?.push(
       MaterialPageRoute<void>(
         builder: (_) => _StandaloneSection(
           title: title,
           child: AlertsScreen(session: widget.session, showHeader: false),
+        ),
+      ),
+    );
+  }
+
+  void _handleNotificationOpen(NotificationOpenRequest request) {
+    if (!mounted) return;
+    widget.notifications.takePendingOpenRequest();
+    _openNotifications(request);
+  }
+
+  void _openNotifications(NotificationOpenRequest request) {
+    final navigator = _contentNavigatorKey.currentState;
+    if (navigator == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _openNotifications(request);
+      });
+      return;
+    }
+    navigator.popUntil((route) => route.isFirst);
+    navigator.push(
+      MaterialPageRoute<void>(
+        builder: (_) => _StandaloneSection(
+          title: context.tr('notifications'),
+          child: NotificationsScreen(
+            session: widget.session,
+            initialCategory: request.category,
+            highlightedId: request.id,
+          ),
         ),
       ),
     );

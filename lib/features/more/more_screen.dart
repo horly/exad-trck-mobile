@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/localization/app_localizations.dart';
+import '../../core/notifications/notification_controller.dart';
 import '../../core/session/session_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_controller.dart';
@@ -9,6 +10,8 @@ import '../../shared/widgets/exad_logo.dart';
 import '../../shared/widgets/ui_components.dart';
 import '../drivers/drivers_screen.dart';
 import '../departments/departments_screen.dart';
+import '../management/fleet_management_screen.dart';
+import '../management/user_management_screen.dart';
 
 class MoreScreen extends StatelessWidget {
   const MoreScreen({
@@ -16,16 +19,23 @@ class MoreScreen extends StatelessWidget {
     required this.session,
     required this.localeController,
     required this.themeController,
+    required this.notifications,
   });
 
   final SessionController session;
   final LocaleController localeController;
   final ThemeController themeController;
+  final NotificationController notifications;
 
   @override
   Widget build(BuildContext context) {
     final user = session.user;
     final superadmin = user?.isSuperadmin == true;
+    final canManageFleet =
+        user?.canManageFleets == true ||
+        user?.canManageVehicles == true ||
+        user?.canManageTrackers == true;
+    final canManageUsers = user?.canManageUsers == true;
     final primary = superadmin
         ? const Color(0xFF0B1746)
         : session.branding.primary;
@@ -163,6 +173,40 @@ class MoreScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
+        if (canManageFleet) ...[
+          SectionPanel(
+            padding: const EdgeInsets.all(14),
+            child: _SettingsRow(
+              icon: Icons.admin_panel_settings_outlined,
+              title: context.tr('fleet_management'),
+              value: context.tr('fleet_management_help'),
+              color: const Color(0xFF6D4BD1),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => FleetManagementScreen(session: session),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (canManageUsers) ...[
+          SectionPanel(
+            padding: const EdgeInsets.all(14),
+            child: _SettingsRow(
+              icon: Icons.manage_accounts_outlined,
+              title: context.tr('user_management'),
+              value: context.tr('user_management_help'),
+              color: const Color(0xFF0B9BCB),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => UserManagementScreen(session: session),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         SectionPanel(
           padding: const EdgeInsets.all(14),
           child: _InfoLine(
@@ -231,6 +275,36 @@ class MoreScreen extends StatelessWidget {
                 value: _themeLabel(context),
                 color: const Color(0xFF7C3AED),
                 onTap: () => _showThemePicker(context),
+              ),
+              const SizedBox(height: 14),
+              Divider(
+                height: 1,
+                color: Theme.of(
+                  context,
+                ).colorScheme.outlineVariant.withValues(alpha: .55),
+              ),
+              const SizedBox(height: 14),
+              _SectionHeader(
+                icon: Icons.notifications_active_outlined,
+                title: context.tr('notifications'),
+              ),
+              const SizedBox(height: 10),
+              _NotificationSwitch(
+                icon: Icons.route_outlined,
+                color: const Color(0xFF2563EB),
+                title: context.tr('vehicle_event_notifications'),
+                description: context.tr('vehicle_event_notifications_help'),
+                value: notifications.eventsEnabled,
+                onChanged: (value) => _setEventNotifications(context, value),
+              ),
+              const SizedBox(height: 8),
+              _NotificationSwitch(
+                icon: Icons.warning_amber_rounded,
+                color: const Color(0xFFE4485F),
+                title: context.tr('alert_notifications'),
+                description: context.tr('alert_notifications_help'),
+                value: notifications.alertsEnabled,
+                onChanged: (value) => _setAlertNotifications(context, value),
               ),
             ],
           ),
@@ -422,6 +496,38 @@ class MoreScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _setEventNotifications(
+    BuildContext context,
+    bool enabled,
+  ) async {
+    final accepted = await notifications.setEventsEnabled(enabled);
+    if (!context.mounted) return;
+    if (!accepted) {
+      _showNotificationPermissionMessage(context);
+      return;
+    }
+  }
+
+  Future<void> _setAlertNotifications(
+    BuildContext context,
+    bool enabled,
+  ) async {
+    final accepted = await notifications.setAlertsEnabled(enabled);
+    if (!context.mounted) return;
+    if (!accepted) {
+      _showNotificationPermissionMessage(context);
+      return;
+    }
+  }
+
+  void _showNotificationPermissionMessage(BuildContext context) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(context.tr('notification_permission_denied'))),
+      );
+  }
+
   String _permissionLabel(BuildContext context, String permission) {
     return switch (permission) {
       'map_view' => context.tr('map'),
@@ -532,6 +638,68 @@ class _ThemeChoice extends StatelessWidget {
           : null,
       selected: selected,
       onTap: onSelected,
+    );
+  }
+}
+
+class _NotificationSwitch extends StatelessWidget {
+  const _NotificationSwitch({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.description,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String description;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: .42),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: SwitchListTile.adaptive(
+        contentPadding: const EdgeInsets.fromLTRB(11, 4, 8, 4),
+        secondary: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, color: color, size: 20),
+        ),
+        title: Text(
+          title,
+          style: TextStyle(
+            color: scheme.onSurface,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Text(
+            description,
+            style: TextStyle(
+              color: scheme.onSurfaceVariant,
+              fontSize: 10.5,
+              height: 1.3,
+            ),
+          ),
+        ),
+        value: value,
+        onChanged: onChanged,
+      ),
     );
   }
 }

@@ -37,6 +37,37 @@ class ScreenTitle extends StatelessWidget {
   }
 }
 
+class CorporateAddButton extends StatelessWidget {
+  const CorporateAddButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.icon = Icons.add,
+    this.loading = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final IconData icon;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    width: double.infinity,
+    child: FilledButton.icon(
+      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(54)),
+      onPressed: loading ? null : onPressed,
+      icon: loading
+          ? const SizedBox.square(
+              dimension: 17,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Icon(icon),
+      label: Text(label),
+    ),
+  );
+}
+
 class SectionPanel extends StatelessWidget {
   const SectionPanel({
     super.key,
@@ -57,6 +88,160 @@ class SectionPanel extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Padding(padding: padding, child: child),
+    );
+  }
+}
+
+InputDecoration corporateInputDecoration({
+  required String label,
+  required IconData icon,
+  String? hint,
+  String? helper,
+  Widget? suffixIcon,
+}) => InputDecoration(
+  labelText: label,
+  hintText: hint,
+  helperText: helper,
+  alignLabelWithHint: true,
+  prefixIcon: Icon(icon, size: 19),
+  suffixIcon: suffixIcon,
+);
+
+class CorporateFormDialog extends StatelessWidget {
+  const CorporateFormDialog({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.formKey,
+    required this.child,
+    required this.cancelLabel,
+    required this.confirmLabel,
+    this.onValidate,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final GlobalKey<FormState> formKey;
+  final Widget child;
+  final String cancelLabel;
+  final String confirmLabel;
+  final bool Function()? onValidate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final availableHeight =
+        MediaQuery.sizeOf(context).height -
+        MediaQuery.viewInsetsOf(context).bottom -
+        32;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 560, maxHeight: availableHeight),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 18, 12, 18),
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: .055),
+                border: Border(bottom: BorderSide(color: theme.dividerColor)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: .11),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: scheme.primary, size: 22),
+                  ),
+                  const SizedBox(width: 13),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 3),
+                        Text(subtitle, style: theme.textTheme.bodyMedium),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: cancelLabel,
+                    onPressed: () => Navigator.pop(context, false),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Form(
+                key: formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.all(20),
+                  child: child,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                border: Border(top: BorderSide(color: theme.dividerColor)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x0D0F172A),
+                    blurRadius: 12,
+                    offset: Offset(0, -4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(50),
+                        side: BorderSide(color: theme.dividerColor),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(context, false),
+                      child: Text(cancelLabel),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      onPressed: () {
+                        final valid = formKey.currentState?.validate() == true;
+                        if (valid && (onValidate?.call() ?? true)) {
+                          Navigator.pop(context, true);
+                        }
+                      },
+                      icon: const Icon(Icons.check_rounded, size: 19),
+                      label: Text(confirmLabel),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -67,6 +67,7 @@ void main() {
     await tester.tap(find.text('Véhicules').first);
     await tester.pumpAndSettle();
     expect(find.byType(VehiclesScreen), findsOneWidget);
+    expect(find.byType(NavigationBar), findsOneWidget);
   });
 
   testWidgets('affiche une console distincte au superadmin', (tester) async {
@@ -84,6 +85,46 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Répartition des flottes'), findsOneWidget);
     expect(find.byIcon(Icons.admin_panel_settings), findsOneWidget);
+  });
+
+  testWidgets('réserve la gestion du parc mobile au superadmin', (
+    tester,
+  ) async {
+    final superadmin = _session(role: 'superadmin');
+    await tester.pumpWidget(
+      ExadTrackingApp(
+        sessionController: superadmin,
+        localeController: LocaleController.preview(),
+      ),
+    );
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Plus'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Gestion du parc'), findsOneWidget);
+    expect(find.text('Gestion des utilisateurs'), findsOneWidget);
+
+    final client = _session(role: 'admin');
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(
+      ExadTrackingApp(
+        sessionController: client,
+        localeController: LocaleController.preview(),
+      ),
+    );
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Plus'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Gestion du parc'), findsNothing);
+    expect(find.text('Gestion des utilisateurs'), findsOneWidget);
   });
 
   testWidgets('demande l’ouverture de la carte au clic sur un véhicule', (
@@ -367,6 +408,37 @@ void main() {
     expect(find.byIcon(Icons.delete_outline), findsNothing);
     expect(find.byType(FloatingActionButton), findsNothing);
   });
+
+  testWidgets('utilise le bouton d\'ajout standard pour les départements', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('fr'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: DepartmentsScreen(
+          session: _session(role: 'admin'),
+          loadDepartments: () async => const DepartmentCollectionData(
+            departments: [],
+            fleets: [FleetInfo(id: 1, name: 'EXAD CARS', code: 'EX-CRS')],
+            canManage: true,
+            canDelete: true,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(FloatingActionButton), findsNothing);
+    expect(find.text('Nouveau département'), findsOneWidget);
+    expect(find.byType(CorporateAddButton), findsOneWidget);
+  });
 }
 
 SessionController _session({required String role}) {
@@ -380,6 +452,19 @@ SessionController _session({required String role}) {
         email: 'admin@example.com',
         role: role,
         permissions: const {'map_view': false},
+        management: role == 'superadmin'
+            ? const {
+                'fleets': true,
+                'vehicles': true,
+                'trackers': true,
+                'users': true,
+              }
+            : {
+                'fleets': false,
+                'vehicles': false,
+                'trackers': false,
+                'users': role == 'admin',
+              },
         twoFactorEnabled: false,
         fleet: role == 'superadmin' ? null : fleet,
       ),

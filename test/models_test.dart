@@ -2,6 +2,61 @@ import 'package:exad_tracking_mobile/core/models/app_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  test('parse les capacités de gestion réservées au superadmin', () {
+    final user = AppUser.fromMap({
+      'id': 1,
+      'name': 'Superadmin',
+      'email': 'superadmin@example.com',
+      'role': 'superadmin',
+      'permissions': <String, dynamic>{},
+      'management': {
+        'fleets': true,
+        'vehicles': true,
+        'trackers': true,
+        'users': true,
+      },
+      'two_factor_enabled': false,
+    });
+
+    expect(user.canManageFleets, isTrue);
+    expect(user.canManageVehicles, isTrue);
+    expect(user.canManageTrackers, isTrue);
+    expect(user.canManageUsers, isTrue);
+  });
+
+  test('parse la gestion mobile des utilisateurs sans données sensibles', () {
+    final data = UserManagementData.fromMap({
+      'data': [
+        {
+          'id': 7,
+          'name': 'Client Mobile',
+          'email': 'client@example.com',
+          'role': 'user',
+          'status': 'active',
+          'permissions': ['map.view', 'engine.control'],
+          'fleet': {'id': 2, 'name': 'EXAD CARS', 'code': 'EX-CRS'},
+          'can_update': true,
+          'can_delete': true,
+        },
+      ],
+      'management': {
+        'can_create': true,
+        'roles': ['user'],
+        'permissions': ['map.view', 'engine.control'],
+        'fleets': [
+          {'id': 2, 'name': 'EXAD CARS', 'code': 'EX-CRS'},
+        ],
+      },
+    });
+
+    expect(data.users.single.name, 'Client Mobile');
+    expect(data.users.single.permissions, ['map.view', 'engine.control']);
+    expect(data.users.single.canDelete, isTrue);
+    expect(data.fleets.single.code, 'EX-CRS');
+    expect(data.roles, ['user']);
+    expect(data.canCreate, isTrue);
+  });
+
   test('parse les etats et la trace live de la carte', () {
     final vehicle = VehicleData.fromMapFeature({
       'geometry': {

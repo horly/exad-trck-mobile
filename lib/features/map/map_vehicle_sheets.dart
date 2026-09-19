@@ -28,6 +28,7 @@ Future<void> showVehicleDetailsSheet(
       child: _VehicleDetailsLoader(
         session: session,
         vehicle: vehicle,
+        showTechnicalDetails: showTechnicalDetails,
         showDriverIdentifier: showTechnicalDetails,
       ),
     ),
@@ -38,11 +39,13 @@ class _VehicleDetailsLoader extends StatefulWidget {
   const _VehicleDetailsLoader({
     required this.session,
     required this.vehicle,
+    required this.showTechnicalDetails,
     required this.showDriverIdentifier,
   });
 
   final SessionController session;
   final VehicleData vehicle;
+  final bool showTechnicalDetails;
   final bool showDriverIdentifier;
 
   @override
@@ -82,6 +85,7 @@ class _VehicleDetailsLoaderState extends State<_VehicleDetailsLoader> {
         }
         return _VehicleDetailsContent(
           data: data!,
+          showTechnicalDetails: widget.showTechnicalDetails,
           showDriverIdentifier: widget.showDriverIdentifier,
           commandBusy: _commanding,
           onEngineCommand: _confirmEngineCommand,
@@ -610,12 +614,14 @@ class _SheetFrame extends StatelessWidget {
 class _VehicleDetailsContent extends StatelessWidget {
   const _VehicleDetailsContent({
     required this.data,
+    required this.showTechnicalDetails,
     required this.showDriverIdentifier,
     required this.commandBusy,
     required this.onEngineCommand,
   });
 
   final VehicleDetailData data;
+  final bool showTechnicalDetails;
   final bool showDriverIdentifier;
   final bool commandBusy;
   final void Function(int output, String action) onEngineCommand;
@@ -659,7 +665,7 @@ class _VehicleDetailsContent extends StatelessWidget {
         accent: Theme.of(context).colorScheme.secondary,
         child: Column(
           children: [
-            if (tracker != null) ...[
+            if (showTechnicalDetails && tracker != null) ...[
               _DetailLine(
                 icon: Icons.memory_outlined,
                 label: context.tr('model'),
@@ -809,90 +815,92 @@ class _VehicleDetailsContent extends StatelessWidget {
                 ],
               ),
       ),
-      _DetailSection(
-        title: 'GSM',
-        icon: Icons.cell_tower_outlined,
-        accent: const Color(0xFF7C3AED),
-        updatedAt: gsm?.updatedAt,
-        child: gsm == null
-            ? _EmptyDetail(message: context.tr('data_unavailable'))
-            : Column(
-                children: [
-                  _DetailLine(
-                    icon: Icons.signal_cellular_alt,
-                    label: context.tr('signal'),
-                    value: _percent(gsm.signalPercent),
-                  ),
-                  _DetailLine(
-                    icon: Icons.cell_tower_outlined,
-                    label: context.tr('operator'),
-                    value: _text(gsm.operatorName),
-                  ),
-                  _DetailLine(
-                    icon: Icons.sim_card_outlined,
-                    label: 'SIM',
-                    value: _text(gsm.simNumber),
-                  ),
-                  _DetailLine(
-                    icon: Icons.code_outlined,
-                    label: 'Codec',
-                    value: _text(gsm.codec),
-                  ),
-                ],
-              ),
-      ),
-      _DetailSection(
-        title: context.tr('tracker_diagnostic'),
-        icon: Icons.tune,
-        accent: const Color(0xFF7C3AED),
-        updatedAt: diagnostic?.updatedAt,
-        child: diagnostic == null
-            ? _EmptyDetail(message: context.tr('data_unavailable'))
-            : Column(
-                children: [
-                  _DetailLine(
-                    icon: Icons.satellite_alt_outlined,
-                    label: context.tr('satellites'),
-                    value: diagnostic.satellites?.toString() ?? '-',
-                  ),
-                  _DetailLine(
-                    icon: Icons.lan_outlined,
-                    label: context.tr('protocol'),
-                    value: _text(diagnostic.protocol),
-                  ),
-                  if (showDriverIdentifier)
+      if (showTechnicalDetails)
+        _DetailSection(
+          title: 'GSM',
+          icon: Icons.cell_tower_outlined,
+          accent: const Color(0xFF7C3AED),
+          updatedAt: gsm?.updatedAt,
+          child: gsm == null
+              ? _EmptyDetail(message: context.tr('data_unavailable'))
+              : Column(
+                  children: [
                     _DetailLine(
-                      icon: Icons.key_outlined,
-                      label: context.tr('identifier'),
-                      value: _text(diagnostic.driverIdentifierUid),
+                      icon: Icons.signal_cellular_alt,
+                      label: context.tr('signal'),
+                      value: _percent(gsm.signalPercent),
                     ),
-                  _DetailLine(
-                    icon: Icons.route_outlined,
-                    label: context.tr('odometer'),
-                    value: diagnostic.odometerKm == null
-                        ? '-'
-                        : '${_number(diagnostic.odometerKm, decimals: 2)} km',
-                  ),
-                  _DetailLine(
-                    icon: Icons.timer_outlined,
-                    label: context.tr('engine_hours'),
-                    value: diagnostic.engineSeconds == null
-                        ? '-'
-                        : _duration(diagnostic.engineSeconds!),
-                  ),
-                  _DetailLine(
-                    icon: Icons.toggle_on_outlined,
-                    label: context.tr('inputs_outputs'),
-                    value: diagnostic.ioCount.toString(),
-                  ),
-                  _DetailLine(
-                    icon: Icons.sensors_outlined,
-                    label: context.tr('sensors'),
-                    value: diagnostic.sensorCount.toString(),
-                  ),
-                ],
-              ),
-      ),
+                    _DetailLine(
+                      icon: Icons.cell_tower_outlined,
+                      label: context.tr('operator'),
+                      value: _text(gsm.operatorName),
+                    ),
+                    _DetailLine(
+                      icon: Icons.sim_card_outlined,
+                      label: 'SIM',
+                      value: _text(gsm.simNumber),
+                    ),
+                    _DetailLine(
+                      icon: Icons.code_outlined,
+                      label: 'Codec',
+                      value: _text(gsm.codec),
+                    ),
+                  ],
+                ),
+        ),
+      if (showTechnicalDetails)
+        _DetailSection(
+          title: context.tr('tracker_diagnostic'),
+          icon: Icons.tune,
+          accent: const Color(0xFF7C3AED),
+          updatedAt: diagnostic?.updatedAt,
+          child: diagnostic == null
+              ? _EmptyDetail(message: context.tr('data_unavailable'))
+              : Column(
+                  children: [
+                    _DetailLine(
+                      icon: Icons.satellite_alt_outlined,
+                      label: context.tr('satellites'),
+                      value: diagnostic.satellites?.toString() ?? '-',
+                    ),
+                    _DetailLine(
+                      icon: Icons.lan_outlined,
+                      label: context.tr('protocol'),
+                      value: _text(diagnostic.protocol),
+                    ),
+                    if (showDriverIdentifier)
+                      _DetailLine(
+                        icon: Icons.key_outlined,
+                        label: context.tr('identifier'),
+                        value: _text(diagnostic.driverIdentifierUid),
+                      ),
+                    _DetailLine(
+                      icon: Icons.route_outlined,
+                      label: context.tr('odometer'),
+                      value: diagnostic.odometerKm == null
+                          ? '-'
+                          : '${_number(diagnostic.odometerKm, decimals: 2)} km',
+                    ),
+                    _DetailLine(
+                      icon: Icons.timer_outlined,
+                      label: context.tr('engine_hours'),
+                      value: diagnostic.engineSeconds == null
+                          ? '-'
+                          : _duration(diagnostic.engineSeconds!),
+                    ),
+                    _DetailLine(
+                      icon: Icons.toggle_on_outlined,
+                      label: context.tr('inputs_outputs'),
+                      value: diagnostic.ioCount.toString(),
+                    ),
+                    _DetailLine(
+                      icon: Icons.sensors_outlined,
+                      label: context.tr('sensors'),
+                      value: diagnostic.sensorCount.toString(),
+                    ),
+                  ],
+                ),
+        ),
       _DetailSection(
         title: 'OBD / CAN',
         icon: Icons.car_repair_outlined,
