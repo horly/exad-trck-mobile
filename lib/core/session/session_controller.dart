@@ -410,7 +410,14 @@ class SessionController extends ChangeNotifier {
   Future<VehicleTripsData> vehicleTrips(
     int vehicleId, {
     String period = 'today',
-  }) => _apiClient.vehicleTrips(vehicleId, period: period);
+    String? startDate,
+    String? endDate,
+  }) => _apiClient.vehicleTrips(
+    vehicleId,
+    period: period,
+    startDate: startDate,
+    endDate: endDate,
+  );
 
   Future<List<VehicleData>> mapSnapshot() => _apiClient.mapVehicles();
 

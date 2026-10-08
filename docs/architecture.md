@@ -129,3 +129,45 @@ Toute nouvelle chaîne visible doit être ajoutée dans les deux dictionnaires. 
 - Préserver le filtrage serveur même si un filtrage local existe pour l’ergonomie.
 - Ajouter les états métier dans `VehicleData` avant de dupliquer leur interprétation dans plusieurs écrans.
 - Tester les formats de réponse et les écrans critiques après toute évolution du contrat API.
+
+
+## 2026-10-05 — Historique sur la carte, build 40
+
+Panneau TripHistoryPanel intégré à MapScreen : résumé de période, chronologie par date, trajets/parkings, sélection exclusive ou multiple, repères départ (lecture) et arrivée (drapeau damier) dessinés localement, repère P et lecture du tracé avec pause/vitesse/progression. Le panneau reste visible pendant la sélection, peut être réduit et se ferme sans laisser de tracé. L’actualisation des véhicules continue mais le centrage automatique est suspendu pendant la consultation. Les dates personnalisées passent par SessionController et ApiClient. Modèles additifs VehicleHistoryItem et coordonnées exactes, compatibles avec un serveur ne renvoyant pas encore history. Les coupures de transmission sont distinctes des stationnements ; aucun prolongement artificiel du parking jusqu’à minuit.
+
+API de production mise à jour : GET /api/v1/mobile/vehicles/{vehicle}/trips contient désormais history.items, parking_count, parking_seconds et elapsed_seconds ; start_coordinates/end_coordinates sont les extrémités GPS, indépendantes du tracé éventuellement ajusté sur la route. Les droits de flotte et le masquage des identifiants du traceur restent appliqués. Déploiement : 2026-10-05T12:56:46.627123+00:00, sauvegarde /var/backups/api-history-20261005-125645.tar.gz, GPS non redémarré. Le correctif de géocodage séparé en attente d’autorisation n’a pas été inclus.
+
+Validation du lot : 39 tests Flutter réussis, dont 4 nouveaux tests de modèles et interactions (chronologie, parking seul, panneau étroit, réponse obsolète, arrêt de la lecture lors de la fermeture). Flutter analyze : aucune erreur ni avertissement. 10 tests PHP API/historique réussis, 43 assertions. Les tests d’interfaces utilisent des données synthétiques ; pas de recette sur téléphone réel ni de validation visuelle du fond Google Maps pour ce build.
+
+Bundle signé : build/app/outputs/bundle/release/EXAD-Tracking-1.0.0+40.aab
+Version : 1.0.0+40 ; package : com.exad.exad_tracking_mobile.
+SHA-256 : 7616ba2a79edd8f2f22ba336652690da44d4fad0b63aeb50f00360e3313a1826
+Taille : 47243050 octets. Bundletool valide le bundle et le versionCode 40. Certificat d’importation identique au build 39 ; huit bibliothèques 64 bits et configuration du bundle compatibles avec les pages 16 Ko. Clé Maps et signatures existantes conservées. Le bundle est prêt à importer dans Google Play ; aucune publication sur le store effectuée.
+
+
+## 6 octobre 2026 — Design du panneau et build 41
+
+TripHistoryPanel reprend le thème de l’application : en-tête à couleur primaire, nom du véhicule, surfaces arrondies, contrôles plus lisibles et cartes distinctes pour trajets/parkings. MapScreen place le panneau à 34 % de la hauteur disponible sur téléphone (138–280 px), à 16 px du haut sur grand écran, avec marges Google Maps adaptées à la réduction/expansion. Les données de session et les clés de signature/Maps sont conservées.
+
+Vérifications de ce lot : analyse statique ciblée des deux écrans sans problème ; 4 tests trip_history_test.dart réussis (modèles, sélection, défilement vers un parking hors écran, largeur 300 px, réponses obsolètes et arrêt de la lecture). Le test existant utilise désormais scrollUntilVisible pour le chargement différé des lignes agrandies. Pas de nouvelle suite Flutter complète.
+
+Build 1.0.0+41 : D:/App/Codex/exad-tracking-mobile/build/app/outputs/bundle/release/EXAD-Tracking-1.0.0+41.aab
+SHA-256 : 07850f00b048af25eaac3777cd5e1c476f9373aae91802726cfcfe835fff03ab
+Taille : 47264141 octets. Bundletool valide le bundle et versionCode 41 ; certificat d’importation identique au build 39, huit bibliothèques 64 bits et configuration vérifiées pour pages de 16 Ko. Build 40 conservé. Aucune publication Google Play effectuée.
+
+APK de recette dérivé de ce bundle avec la signature debug existante, installé par adb install -r dans Pixel_9_Pro (emulator-5554), session conservée, activité principale démarrée et versionCode 41 contrôlé. Recette visuelle du résumé et du détail sur un véhicule avec parking seul, fond Google Maps visible, panneau remonté et lisible. Un premier chargement a affiché une erreur générique, puis a réussi après Réessayer (HTTP 200 observé) ; cause initiale non établie, aucun correctif réseau prétendu. Les trajets, choix de vitesse et multisélection sont couverts par les tests ciblés, sans nouvelle recette physique. Captures et reçus : DASHCAM/analysis/history-design-20261005/.
+
+## 8 octobre 2026 — Historique ancré en haut, build 43
+
+Demande : supprimer l'espace cartographique laissé au-dessus du panneau Historique mobile ; garder l'en-tête réduit en haut, sous les informations du véhicule, et dégager la carte en bas.
+
+MapScreen : origine verticale mobile à 136 px (58 px de barre + 70 px de télémétrie + 8 px d'écart), indépendante de l'état réduit et de la hauteur du téléphone, au lieu de 34 % de l'écran. En portrait, hauteur maximale du panneau limitée à 65 % de la zone restante (plancher de 280 px dans la limite disponible), liste défilante ; espace conservé sous le panneau. Sur écran large, présentation latérale conservée. Boutons de recentrage et de position du téléphone déplacés en bas à droite pendant la consultation en portrait.
+
+La marge Google Maps réserve désormais la partie supérieure occupée, mesurée après mise en page. Le trajet est recadré après mise à jour de cette marge (délai de 180 ms pour l'application native, génération invalidée à la fermeture ou lors d'une autre sélection). Réduction/expansion : en-tête immobile et nouveau cadrage dans l'espace dégagé ; marge de 48 px autour des trajets pour les icônes. Les requêtes GPS, le contenu de l'historique et la lecture sont conservés.
+
+Validation : analyse Flutter ciblée sans problème ; 10 tests existants d'historique et de politique GPS réussis, rejoués après l'ajustement du cadrage. Aucun nouveau test miroir de la disposition. Build release compilé, validation bundletool et versionCode 43, certificat d'importation identique au build 39 ; huit bibliothèques 64 bits et configuration du bundle vérifiées pour les pages 16 Ko. Version de contrôle dérivée du bundle avec la signature debug de l'émulateur, mise à jour par adb install -r avec session conservée. Recette visuelle portrait sur Pixel_9_Pro / emulator-5554, véhicule Suzuki Horly : panneau ouvert sous la télémétrie, barre réduite à la même hauteur, fond Google Maps et icônes départ/arrivée visibles dans la zone inférieure. Pas d'essai sur téléphone physique ni de publication Google Play.
+
+Bundle signé : D:/App/Codex/exad-tracking-mobile/build/app/outputs/bundle/release/EXAD-Tracking-1.0.0+43.aab
+Taille : 47267963 octets ; SHA-256 : cb747df744dcc1be55d5db789f196cd97bfb21815f12e222e6942364811dbef6.
+Notes françaises : build/app/outputs/bundle/release/EXAD-Tracking-1.0.0+43-notes-fr.txt.
+Sources avant/après, journaux, reçu et captures : DASHCAM/analysis/mobile-history-top-20261008/. EXAD Tracking web/API et EXADCAM non modifiés ; aucun déploiement serveur dans ce lot.

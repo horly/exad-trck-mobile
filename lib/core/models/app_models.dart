@@ -506,6 +506,7 @@ class VehicleData {
     this.latitude,
     this.longitude,
     this.lastSignalAt,
+    this.positionTime,
     this.fleet,
   });
 
@@ -538,6 +539,7 @@ class VehicleData {
   final double? latitude;
   final double? longitude;
   final String? lastSignalAt;
+  final String? positionTime;
   final FleetInfo? fleet;
 
   bool get hasAvailableGps =>
@@ -591,6 +593,7 @@ class VehicleData {
       latitude: doubleOf(position['latitude']),
       longitude: doubleOf(position['longitude']),
       lastSignalAt: tracking['last_signal_at']?.toString(),
+      positionTime: tracking['position_time']?.toString(),
       fleet: fleet.isEmpty ? null : FleetInfo.fromMap(fleet),
     );
   }
@@ -645,6 +648,7 @@ class VehicleData {
       longitude: coordinates.isNotEmpty ? doubleOf(coordinates[0]) : null,
       latitude: coordinates.length > 1 ? doubleOf(coordinates[1]) : null,
       lastSignalAt: properties['last_signal_at']?.toString(),
+      positionTime: properties['position_time']?.toString(),
       fleet: fleet.isEmpty ? null : FleetInfo.fromMap(fleet),
     );
   }
@@ -1168,6 +1172,7 @@ class VehicleObdDetail {
     this.engineTemperatureC,
     this.moduleVoltage,
     this.engineLoadPercent,
+    this.fuelLevelLiters,
     this.fuelLevelPercent,
     this.faultDistanceKm,
     this.errorsCount,
@@ -1183,6 +1188,7 @@ class VehicleObdDetail {
   final double? engineTemperatureC;
   final double? moduleVoltage;
   final double? engineLoadPercent;
+  final double? fuelLevelLiters;
   final double? fuelLevelPercent;
   final int? faultDistanceKm;
   final int? errorsCount;
@@ -1198,6 +1204,7 @@ class VehicleObdDetail {
       engineTemperatureC != null ||
       moduleVoltage != null ||
       engineLoadPercent != null ||
+      fuelLevelLiters != null ||
       fuelLevelPercent != null ||
       faultDistanceKm != null ||
       errorsCount != null ||
@@ -1215,6 +1222,7 @@ class VehicleObdDetail {
       engineTemperatureC: doubleOf(map['engine_temperature_c']),
       moduleVoltage: doubleOf(map['module_voltage']),
       engineLoadPercent: doubleOf(map['engine_load_percent']),
+      fuelLevelLiters: doubleOf(map['fuel_level_liters']),
       fuelLevelPercent: doubleOf(map['fuel_level_percent']),
       faultDistanceKm: map['fault_distance_km'] == null
           ? null
@@ -1364,6 +1372,52 @@ class GeoCoordinateData {
   final double longitude;
 }
 
+GeoCoordinateData? historyCoordinate(dynamic value) {
+  if (value is! List || value.length < 2) return null;
+  final longitude = doubleOf(value[0]), latitude = doubleOf(value[1]);
+  if (latitude == null ||
+      longitude == null ||
+      !latitude.isFinite ||
+      !longitude.isFinite ||
+      latitude.abs() > 90 ||
+      longitude.abs() > 180) {
+    return null;
+  }
+  return GeoCoordinateData(latitude, longitude);
+}
+
+class VehicleHistoryItem {
+  const VehicleHistoryItem({
+    required this.id,
+    required this.type,
+    required this.date,
+    required this.endDate,
+    required this.startTime,
+    required this.endTime,
+    required this.address,
+    required this.durationSeconds,
+    this.coordinate,
+  });
+  final String id, type, date, endDate, startTime, endTime, address;
+  final int durationSeconds;
+  final GeoCoordinateData? coordinate;
+  factory VehicleHistoryItem.fromMap(Map<String, dynamic> map) =>
+      VehicleHistoryItem(
+        id: map['id']?.toString() ?? '',
+        type: map['type']?.toString() ?? 'gap',
+        date: map['date']?.toString() ?? '',
+        endDate: map['end_date']?.toString() ?? map['date']?.toString() ?? '',
+        startTime: map['start_time']?.toString() ?? '',
+        endTime: map['end_time']?.toString() ?? '',
+        address:
+            map['address']?.toString() ??
+            map['start_address']?.toString() ??
+            '',
+        durationSeconds: intOf(map['duration_seconds']),
+        coordinate: historyCoordinate(map['coordinates']),
+      );
+}
+
 class VehicleTripData {
   const VehicleTripData({
     required this.id,
@@ -1379,8 +1433,13 @@ class VehicleTripData {
     required this.maxSpeedKmh,
     required this.color,
     required this.coordinates,
+    this.startCoordinate,
+    this.endCoordinate,
+    this.endDate = '',
   });
 
+  final GeoCoordinateData? startCoordinate, endCoordinate;
+  final String endDate;
   final String id;
   final int index;
   final String date;
@@ -1422,6 +1481,9 @@ class VehicleTripData {
       maxSpeedKmh: doubleOf(map['max_speed_kmh']) ?? 0,
       color: colorFromHex(map['color']?.toString(), const Color(0xFF2563EB)),
       coordinates: coordinates,
+      startCoordinate: historyCoordinate(map['start_coordinates']),
+      endCoordinate: historyCoordinate(map['end_coordinates']),
+      endDate: map['end_date']?.toString() ?? map['date']?.toString() ?? '',
     );
   }
 }
@@ -1433,6 +1495,10 @@ class VehicleTripsData {
     required this.distanceKm,
     required this.durationSeconds,
     required this.trips,
+    this.history = const [],
+    this.parkingCount = 0,
+    this.parkingSeconds = 0,
+    this.elapsedSeconds = 0,
   });
 
   final bool trackingConfigured;
@@ -1440,15 +1506,24 @@ class VehicleTripsData {
   final double distanceKm;
   final int durationSeconds;
   final List<VehicleTripData> trips;
+  final List<VehicleHistoryItem> history;
+  final int parkingCount, parkingSeconds, elapsedSeconds;
 
   factory VehicleTripsData.fromMap(Map<String, dynamic> map) {
     final summary = mapOf(map['summary']);
+    final history = mapOf(map['history']);
     return VehicleTripsData(
       trackingConfigured: map['tracking_configured'] == true,
       count: intOf(summary['count']),
       distanceKm: doubleOf(summary['distance_km']) ?? 0,
       durationSeconds: intOf(summary['duration_seconds']),
       trips: listOfMaps(map['trips']).map(VehicleTripData.fromMap).toList(),
+      history: listOfMaps(
+        history['items'],
+      ).map(VehicleHistoryItem.fromMap).toList(),
+      parkingCount: intOf(history['parking_count']),
+      parkingSeconds: intOf(history['parking_seconds']),
+      elapsedSeconds: intOf(history['elapsed_seconds']),
     );
   }
 }

@@ -7,6 +7,18 @@ val localProperties = Properties().apply {
     }
 }
 
+val keystoreProperties = Properties().apply {
+    val keystorePropertiesFile = rootProject.file("key.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use(::load)
+    }
+}
+
+// Direct APK installations before build 38 used this workstation's Android
+// debug certificate. Keep an explicit, opt-in compatibility path so those
+// installations can be upgraded without affecting Play Store release signing.
+val useLegacyPlatformSigning = System.getenv("EXAD_ANDROID_LEGACY_SIGNING") == "1"
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -46,11 +58,22 @@ android {
             localProperties.getProperty("MAPS_API_KEY", "")
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+            storeFile = keystoreProperties.getProperty("storeFile")?.let(::file)
+            storePassword = keystoreProperties.getProperty("storePassword")
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (useLegacyPlatformSigning) {
+                signingConfigs.getByName("debug")
+            } else {
+                signingConfigs.getByName("release")
+            }
         }
     }
 }

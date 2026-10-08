@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -192,7 +193,8 @@ class LocalSystemNotificationGateway implements SystemNotificationGateway {
   }
 }
 
-class NotificationController extends ChangeNotifier {
+class NotificationController extends ChangeNotifier
+    with WidgetsBindingObserver {
   NotificationController({
     FlutterSecureStorage? storage,
     SystemNotificationGateway? gateway,
@@ -216,6 +218,7 @@ class NotificationController extends ChangeNotifier {
       StreamController<NotificationOpenRequest>.broadcast();
   NotificationOpenRequest? _pendingOpenRequest;
   bool _syncing = false;
+  bool _observingLifecycle = false;
   String _languageCode = 'fr';
 
   bool initialized = false;
@@ -234,6 +237,10 @@ class NotificationController extends ChangeNotifier {
 
   Future<void> initialize() async {
     try {
+      if (!_observingLifecycle) {
+        WidgetsBinding.instance.addObserver(this);
+        _observingLifecycle = true;
+      }
       final values = await _storage.readAll();
       eventsEnabled = values[_eventsEnabledKey] == 'true';
       alertsEnabled = values[_alertsEnabledKey] == 'true';
@@ -271,6 +278,7 @@ class NotificationController extends ChangeNotifier {
       eventsEnabled = serverPreferences.vehicleEventsEnabled;
       alertsEnabled = serverPreferences.alertsEnabled;
       await _persistPreferences();
+      if (eventsEnabled || alertsEnabled) await _allowNotifications();
       final token = await _pushGateway.token();
       if (token != null && token.isNotEmpty) await _registerToken(token);
     } catch (_) {
@@ -342,6 +350,13 @@ class NotificationController extends ChangeNotifier {
     }
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final session = _session;
+    if (session != null) unawaited(attachSession(session));
+  }
+
   Future<void> _showForegroundMessage(PushMessage message) async {
     if (message.category == 'vehicle_event' && eventsEnabled) {
       await _gateway.showVehicleEvent(message);
@@ -375,6 +390,7 @@ class NotificationController extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_observingLifecycle) WidgetsBinding.instance.removeObserver(this);
     unawaited(_tokenSubscription?.cancel());
     unawaited(_messageSubscription?.cancel());
     unawaited(_openedMessageSubscription?.cancel());

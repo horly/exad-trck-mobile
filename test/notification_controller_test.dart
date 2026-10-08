@@ -1,6 +1,11 @@
+import 'package:exad_tracking_mobile/core/api/api_client.dart';
+import 'package:exad_tracking_mobile/core/models/app_models.dart';
 import 'package:exad_tracking_mobile/core/notifications/notification_controller.dart';
+import 'package:exad_tracking_mobile/core/session/session_controller.dart';
+import 'package:exad_tracking_mobile/core/storage/token_store.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/widgets.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -80,6 +85,48 @@ void main() {
       expect(request?.id, 17);
     },
   );
+  test(
+    'demande la permission et resynchronise le jeton au retour au premier plan',
+    () async {
+      FlutterSecureStorage.setMockInitialValues({});
+      const storage = FlutterSecureStorage();
+      final tokenStore = TokenStore(storage: storage);
+      final api = _NotificationApiClient(tokenStore: tokenStore);
+      final session = SessionController(tokenStore: tokenStore, apiClient: api)
+        ..stage = SessionStage.signedIn
+        ..bootstrap = const BootstrapData(
+          user: AppUser(
+            id: 1,
+            name: 'Admin EXAD',
+            email: 'admin@example.com',
+            role: 'admin',
+            permissions: {},
+            twoFactorEnabled: false,
+          ),
+          branding: BrandingData.fallback,
+        );
+      final gateway = _FakeNotificationGateway();
+      final controller = NotificationController(
+        storage: storage,
+        gateway: gateway,
+        pushGateway: _FakePushGateway(tokenValue: 'firebase-token'),
+      );
+
+      await controller.initialize();
+      await controller.attachSession(session);
+
+      expect(gateway.permissionRequests, 1);
+      expect(api.registrationCalls, 1);
+
+      controller.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await pumpEventQueue();
+
+      expect(gateway.permissionRequests, 2);
+      expect(api.registrationCalls, 2);
+
+      controller.dispose();
+    },
+  );
 }
 
 class _FakeNotificationGateway implements SystemNotificationGateway {
@@ -107,9 +154,10 @@ class _FakeNotificationGateway implements SystemNotificationGateway {
 }
 
 class _FakePushGateway implements PushMessagingGateway {
-  _FakePushGateway({this.initial});
+  _FakePushGateway({this.initial, this.tokenValue});
 
   final PushMessage? initial;
+  final String? tokenValue;
 
   @override
   Stream<PushMessage> get foregroundMessages => const Stream.empty();
@@ -121,8 +169,30 @@ class _FakePushGateway implements PushMessagingGateway {
   Future<PushMessage?> initialMessage() async => initial;
 
   @override
-  Future<String?> token() async => null;
+  Future<String?> token() async => tokenValue;
 
   @override
   Stream<String> get tokenRefresh => const Stream.empty();
+}
+
+class _NotificationApiClient extends ApiClient {
+  _NotificationApiClient({required super.tokenStore});
+
+  int registrationCalls = 0;
+
+  @override
+  Future<NotificationPreferencesData> notificationPreferences() async =>
+      const NotificationPreferencesData(
+        vehicleEventsEnabled: true,
+        alertsEnabled: true,
+      );
+
+  @override
+  Future<void> registerPushDevice({
+    required String token,
+    required String locale,
+    required String appVersion,
+  }) async {
+    registrationCalls++;
+  }
 }

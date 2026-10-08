@@ -13,6 +13,8 @@ import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/fleet_status_icon.dart';
 import '../../shared/widgets/ui_components.dart';
 import 'map_vehicle_sheets.dart';
+import 'live_position_motion.dart';
+import 'trip_history_panel.dart';
 
 const _darkMapStyle = '''[
   {"elementType":"geometry","stylers":[{"color":"#172033"}]},
@@ -58,7 +60,16 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   GoogleMapController? mapController;
   VehicleData? selectedVehicle;
   VehicleDetailData? selectedVehicleDetails;
-  VehicleTripData? selectedTrip;
+  VehicleData? historyVehicle;
+  bool historyCollapsed = false;
+  final historyPanelKey = GlobalKey();
+  double? historyPanelHeight;
+  int historyLayoutGeneration = 0;
+  List<LatLng> historyPoints = [];
+  List<VehicleTripData> historyTrips = [];
+  final Map<String, Marker> historyPins = {};
+  int historyGeneration = 0;
+  Marker? historyReplay;
   List<VehicleData> liveVehicles = const [];
   final Map<int, LatLng> displayedPositions = {};
   final Map<int, _VehicleMotion> motions = {};
@@ -76,6 +87,11 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   DateTime? lastUpdatedAt;
   DateTime? lastCameraFollowAt;
   int handledFocusRequestId = 0;
+  bool _hasFreshSnapshot = false;
+  bool _appResumed = true;
+  bool _resumeRefreshPending = false;
+  int _liveGeneration = 0;
+  final Set<int> _snapOnNextUpdate = {};
 
   List<VehicleData> get positionedVehicles => liveVehicles
       .where((vehicle) => vehicle.latitude != null && vehicle.longitude != null)
@@ -122,6 +138,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         _startLiveRefresh();
         _startSelectedTelemetryRefresh();
       } else {
+        _resetLiveAnimation();
         refreshTimer?.cancel();
         selectedTelemetryTimer?.cancel();
       }
@@ -135,11 +152,13 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appResumed = state == AppLifecycleState.resumed;
     if (state == AppLifecycleState.resumed && widget.active) {
       _startLiveRefresh();
       _startSelectedTelemetryRefresh();
       return;
     }
+    _resetLiveAnimation();
     refreshTimer?.cancel();
     selectedTelemetryTimer?.cancel();
   }
@@ -155,9 +174,20 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  void _resetLiveAnimation() {
+    _liveGeneration++;
+    _hasFreshSnapshot = false;
+    animationTimer?.cancel();
+    motions.clear();
+    _seedDisplayedPositions(liveVehicles);
+    lastCameraFollowAt = null;
+  }
+
   void _startLiveRefresh() {
+    _resetLiveAnimation();
+    _resumeRefreshPending = refreshing;
     refreshTimer?.cancel();
-    if (!widget.active || !autoRefresh) return;
+    if (!widget.active || !autoRefresh || !_appResumed) return;
     unawaited(_refreshLive());
     refreshTimer = Timer.periodic(
       liveRefreshInterval,
@@ -182,33 +212,72 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshLive({bool fit = false, bool showError = false}) async {
-    if (refreshing || !mounted) return;
+    if (refreshing || !mounted || !widget.active || !_appResumed) return;
+    final generation = _liveGeneration;
     setState(() => refreshing = true);
     try {
       final snapshot = await widget.session.mapSnapshot();
-      if (!mounted) return;
+      if (!mounted ||
+          generation != _liveGeneration ||
+          !widget.active ||
+          !_appResumed) {
+        return;
+      }
       _applySnapshot(snapshot);
       if (fit) await _fitVehicles(positionedVehicles);
     } catch (_) {
-      if (!mounted || !showError) return;
+      if (!mounted || generation != _liveGeneration) return;
+      _resetLiveAnimation();
+      if (!showError) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(context.tr('map_refresh_failed'))));
     } finally {
-      if (mounted) setState(() => refreshing = false);
+      if (mounted) {
+        setState(() => refreshing = false);
+        if (generation != _liveGeneration &&
+            widget.active &&
+            _appResumed &&
+            autoRefresh) {
+          // A request begun before backgrounding must never seed a resumed animation.
+          // Let the regular refresh timer retry failures; queue only a lifecycle change.
+          if (_resumeRefreshPending) {
+            _resumeRefreshPending = false;
+            unawaited(_refreshLive());
+          }
+        }
+      }
     }
   }
 
   void _applySnapshot(List<VehicleData> snapshot) {
+    final now = DateTime.now();
+    final continuous =
+        _hasFreshSnapshot &&
+        widget.active &&
+        _appResumed &&
+        lastUpdatedAt != null &&
+        now.difference(lastUpdatedAt!) <= const Duration(seconds: 30);
+    final previous = {for (final vehicle in liveVehicles) vehicle.id: vehicle};
+    var selectedSnapped = false;
     final nextIds = snapshot.map((vehicle) => vehicle.id).toSet();
     displayedPositions.removeWhere((id, _) => !nextIds.contains(id));
     motions.removeWhere((id, _) => !nextIds.contains(id));
+    _snapOnNextUpdate.retainAll(nextIds);
 
     for (final vehicle in snapshot) {
       if (vehicle.latitude == null || vehicle.longitude == null) continue;
       final target = LatLng(vehicle.latitude!, vehicle.longitude!);
       final current = displayedPositions[vehicle.id] ?? target;
-      if (vehicle.isMoving && !_samePosition(current, target)) {
+      final snap = _snapOnNextUpdate.remove(vehicle.id);
+      if (!snap &&
+          canAnimateLivePosition(
+            continuous: continuous,
+            previous: previous[vehicle.id],
+            next: vehicle,
+            current: GeoCoordinateData(current.latitude, current.longitude),
+            now: now,
+          )) {
         motions[vehicle.id] = _VehicleMotion(
           path: _motionPath(vehicle, current, target),
           startedAt: DateTime.now(),
@@ -217,6 +286,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       } else {
         displayedPositions[vehicle.id] = target;
         motions.remove(vehicle.id);
+        if (selectedVehicle?.id == vehicle.id &&
+            (snap || !continuous || !_samePosition(current, target))) {
+          selectedSnapped = true;
+        }
       }
     }
 
@@ -226,8 +299,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       selectedVehicle = selectedId == null
           ? null
           : snapshot.where((vehicle) => vehicle.id == selectedId).firstOrNull;
-      lastUpdatedAt = DateTime.now();
+      lastUpdatedAt = now;
+      _hasFreshSnapshot = true;
     });
+    if (selectedSnapped &&
+        selectedId != null &&
+        historyVehicle == null &&
+        mapController != null) {
+      final position = displayedPositions[selectedId];
+      if (position != null) {
+        unawaited(mapController!.moveCamera(CameraUpdate.newLatLng(position)));
+      }
+    }
     _ensureAnimationTicker();
     _handleFocusRequest();
   }
@@ -400,9 +483,14 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   void _ensureAnimationTicker() {
-    if (motions.isEmpty || animationTimer?.isActive == true) return;
+    if (!widget.active ||
+        !_appResumed ||
+        motions.isEmpty ||
+        animationTimer?.isActive == true) {
+      return;
+    }
     animationTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-      if (!mounted || motions.isEmpty) {
+      if (!mounted || !widget.active || !_appResumed || motions.isEmpty) {
         animationTimer?.cancel();
         return;
       }
@@ -429,6 +517,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           ? null
           : displayedPositions[selectedId];
       final shouldFollow =
+          historyVehicle == null &&
           selectedPosition != null &&
           (lastCameraFollowAt == null ||
               now.difference(lastCameraFollowAt!) >=
@@ -523,6 +612,34 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     final panelWidth = compact
         ? (constraints.maxWidth * .82).clamp(280.0, 360.0).toDouble()
         : 340.0;
+    final historyWide =
+        constraints.maxWidth >= 720 ||
+        (constraints.maxWidth >= 600 &&
+            constraints.maxWidth > constraints.maxHeight);
+    // Keep the history header directly below the mobile toolbar/telemetry.
+    final historyTop = compact
+        ? (selectedVehicle == null ? 66.0 : 136.0)
+        : 16.0;
+    final historyAvailable = (constraints.maxHeight - historyTop - 12)
+        .clamp(0.0, double.infinity)
+        .toDouble();
+    // Leave the lower map visible while the portrait history is expanded.
+    final historyHeight = historyWide
+        ? historyAvailable
+        : (historyAvailable * .65)
+              .clamp(historyAvailable.clamp(0.0, 280.0), historyAvailable)
+              .toDouble();
+    if (historyVehicle != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || historyVehicle == null) return;
+        final height = historyPanelKey.currentContext?.size?.height;
+        if (height != null && (height - (historyPanelHeight ?? 0)).abs() > .5) {
+          setState(() => historyPanelHeight = height);
+          _scheduleHistoryFit();
+        }
+      });
+    }
+    final historyWidth = historyWide ? 390.0 : constraints.maxWidth - 24;
     final selectedPanelLeft = panelVisible && !compact ? panelWidth + 32 : 16.0;
 
     return Stack(
@@ -539,6 +656,18 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
               ),
               zoom: initialStreetZoom,
             ),
+            padding: historyVehicle == null
+                ? EdgeInsets.zero
+                : historyWide
+                ? EdgeInsets.only(left: historyWidth + 28)
+                : EdgeInsets.only(
+                    top:
+                        historyTop +
+                        (historyCollapsed
+                            ? 70
+                            : (historyPanelHeight ?? historyHeight)) +
+                        8,
+                  ),
             markers: _markers(vehicles),
             polylines: _polylines(),
             myLocationEnabled: myLocationEnabled,
@@ -622,7 +751,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   panelVisible = showPanel;
                   if (compact && showPanel) {
                     selectedVehicle = null;
-                    selectedTrip = null;
+                    _clearHistory();
                   }
                 });
               },
@@ -640,7 +769,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 selectedTelemetryTimer?.cancel();
                 setState(() {
                   selectedVehicle = null;
-                  selectedTrip = null;
+                  _clearHistory();
                   panelVisible = true;
                 });
               },
@@ -656,12 +785,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                     ),
               onTrips: selectedVehicle == null
                   ? null
-                  : () => showVehicleTripsSheet(
-                      context,
-                      widget.session,
-                      selectedVehicle!,
-                      _showTrip,
-                    ),
+                  : () => _openTripHistory(selectedVehicle!),
               onEvents: selectedVehicle == null
                   ? null
                   : () => showVehicleEventsSheet(
@@ -674,7 +798,12 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
         if (!compact || !panelVisible)
           Positioned(
             right: 16,
-            top: compact ? (selectedVehicle == null ? 72 : 142) : 16,
+            top: historyVehicle != null && !historyWide
+                ? null
+                : compact
+                ? (selectedVehicle == null ? 72 : 142)
+                : 16,
+            bottom: historyVehicle != null && !historyWide ? 16 : null,
             child: Column(
               children: [
                 _MapIconButton(
@@ -703,7 +832,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                   : null,
             ),
           ),
-        if (selectedVehicle != null && !compact && !panelVisible)
+        if (selectedVehicle != null &&
+            !compact &&
+            !panelVisible &&
+            historyVehicle == null)
           AnimatedPositioned(
             duration: const Duration(milliseconds: 220),
             left: selectedPanelLeft,
@@ -715,7 +847,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 selectedTelemetryTimer?.cancel();
                 setState(() {
                   selectedVehicle = null;
-                  selectedTrip = null;
+                  _clearHistory();
                 });
               },
               onDetails: () => showVehicleDetailsSheet(
@@ -723,16 +855,37 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
                 widget.session,
                 selectedVehicle!,
               ),
-              onTrips: () => showVehicleTripsSheet(
-                context,
-                widget.session,
-                selectedVehicle!,
-                _showTrip,
-              ),
+              onTrips: () => _openTripHistory(selectedVehicle!),
               onEvents: () => showVehicleEventsSheet(
                 context,
                 widget.session,
                 selectedVehicle!,
+              ),
+            ),
+          ),
+        if (historyVehicle != null)
+          Positioned(
+            left: 12,
+            top: historyTop,
+            width: historyWidth,
+            child: ConstrainedBox(
+              key: historyPanelKey,
+              constraints: BoxConstraints(maxHeight: historyHeight),
+              child: TripHistoryPanel(
+                key: ValueKey(historyVehicle!.id),
+                vehicleName: historyVehicle!.name,
+                active: widget.active,
+                onCollapsedChanged: (value) =>
+                    setState(() => historyCollapsed = value),
+                load: (period, from, to) => widget.session.vehicleTrips(
+                  historyVehicle!.id,
+                  period: period,
+                  startDate: from,
+                  endDate: to,
+                ),
+                onSelection: _showHistorySelection,
+                onPlayback: _showHistoryPlayback,
+                onClose: () => setState(_clearHistory),
               ),
             ),
           ),
@@ -741,6 +894,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   Set<Marker> _markers(List<VehicleData> vehicles) {
+    if (historyVehicle != null) return {...historyPins.values, ?historyReplay};
     return vehicles.map((vehicle) {
       final position =
           displayedPositions[vehicle.id] ??
@@ -763,6 +917,24 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Set<Polyline> _polylines() {
     final polylines = <Polyline>{};
+    if (historyVehicle != null) {
+      return historyTrips
+          .where((t) => t.coordinates.length > 1)
+          .map(
+            (t) => Polyline(
+              polylineId: PolylineId(t.id),
+              points: t.coordinates
+                  .map((p) => LatLng(p.latitude, p.longitude))
+                  .toList(),
+              color: t.color,
+              width: 5,
+              startCap: Cap.roundCap,
+              endCap: Cap.roundCap,
+              jointType: JointType.round,
+            ),
+          )
+          .toSet();
+    }
     for (final vehicle in positionedVehicles.where(
       (vehicle) => vehicle.isMoving && vehicle.trail.length > 1,
     )) {
@@ -781,22 +953,6 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       );
     }
 
-    final trip = selectedTrip;
-    if (trip != null && trip.coordinates.length > 1) {
-      polylines.add(
-        Polyline(
-          polylineId: PolylineId(trip.id),
-          points: trip.coordinates
-              .map((point) => LatLng(point.latitude, point.longitude))
-              .toList(),
-          color: trip.color,
-          width: 5,
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
-          jointType: JointType.round,
-        ),
-      );
-    }
     return polylines;
   }
 
@@ -870,29 +1026,34 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   }
 
   void _selectVehicle(VehicleData vehicle, {bool compact = false}) {
+    vehicle =
+        liveVehicles.where((item) => item.id == vehicle.id).firstOrNull ??
+        vehicle;
+    if (vehicle.latitude == null || vehicle.longitude == null) return;
+    final latestPosition = LatLng(vehicle.latitude!, vehicle.longitude!);
+    motions.remove(vehicle.id);
+    displayedPositions[vehicle.id] = latestPosition;
+    _snapOnNextUpdate.add(vehicle.id);
+    lastCameraFollowAt = null;
     setState(() {
       selectedVehicle = vehicle;
       if (selectedVehicleDetails?.vehicle.id != vehicle.id) {
         selectedVehicleDetails = null;
       }
-      selectedTrip = null;
+      _clearHistory();
       if (compact || MediaQuery.sizeOf(context).width < 720) {
         panelVisible = false;
       }
     });
     unawaited(
-      mapController?.animateCamera(
+      mapController?.moveCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(
-            target:
-                displayedPositions[vehicle.id] ??
-                LatLng(vehicle.latitude!, vehicle.longitude!),
-            zoom: 17,
-          ),
+          CameraPosition(target: latestPosition, zoom: 17),
         ),
       ),
     );
     _startSelectedTelemetryRefresh();
+    unawaited(_refreshLive());
   }
 
   Future<void> _loadSelectedVehicleTelemetry(int vehicleId) async {
@@ -918,7 +1079,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       selectedTelemetryTimer?.cancel();
       setState(() {
         selectedVehicle = null;
-        selectedTrip = null;
+        _clearHistory();
         panelVisible = true;
       });
       handledFocusRequestId = widget.focusRequestId;
@@ -943,13 +1104,222 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _showTrip(VehicleTripData trip) {
-    if (trip.coordinates.isEmpty) return;
-    setState(() => selectedTrip = trip);
-    final points = trip.coordinates
-        .map((point) => LatLng(point.latitude, point.longitude))
+  void _clearHistory() {
+    historyGeneration++;
+    historyVehicle = null;
+    historyCollapsed = false;
+    historyPanelHeight = null;
+    historyLayoutGeneration++;
+    historyPoints = [];
+    historyTrips = [];
+    historyPins.clear();
+    historyReplay = null;
+  }
+
+  void _openTripHistory(VehicleData vehicle) {
+    setState(() {
+      _clearHistory();
+      historyVehicle = vehicle;
+      panelVisible = false;
+    });
+  }
+
+  void _showHistorySelection(
+    List<VehicleTripData> trips,
+    VehicleHistoryItem? parking,
+  ) {
+    final generation = ++historyGeneration;
+    setState(() {
+      historyTrips = trips;
+      historyPins.clear();
+      historyReplay = null;
+    });
+    final points = trips
+        .expand((t) => t.coordinates)
+        .map((p) => LatLng(p.latitude, p.longitude))
         .toList();
-    unawaited(_fitPoints(points));
+    if (parking?.coordinate != null) {
+      final p = parking!.coordinate!;
+      final point = LatLng(p.latitude, p.longitude);
+      points.add(point);
+      unawaited(
+        _historyPin(
+          'parking',
+          point,
+          Colors.grey,
+          'P',
+          parking.address,
+          generation,
+        ),
+      );
+    } else if (trips.isNotEmpty) {
+      final first = trips.first, last = trips.last;
+      final start = first.startCoordinate ?? first.coordinates.firstOrNull;
+      final end = last.endCoordinate ?? last.coordinates.lastOrNull;
+      if (start != null) {
+        unawaited(
+          _historyPin(
+            'start',
+            LatLng(start.latitude, start.longitude),
+            first.color,
+            'start',
+            first.startAddress,
+            generation,
+          ),
+        );
+      }
+      if (end != null) {
+        unawaited(
+          _historyPin(
+            'finish',
+            LatLng(end.latitude, end.longitude),
+            last.color,
+            'finish',
+            last.endAddress,
+            generation,
+          ),
+        );
+      }
+    }
+    historyPoints = points;
+    _scheduleHistoryFit();
+  }
+
+  void _scheduleHistoryFit() {
+    final generation = ++historyLayoutGeneration;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Let the measured panel padding reach the native map before fitting.
+      await Future<void>.delayed(const Duration(milliseconds: 180));
+      if (mounted &&
+          historyVehicle != null &&
+          generation == historyLayoutGeneration) {
+        unawaited(_fitPoints(historyPoints));
+      }
+    });
+  }
+
+  Future<void> _historyPin(
+    String id,
+    LatLng point,
+    Color color,
+    String kind,
+    String address,
+    int generation,
+  ) async {
+    final recorder = ui.PictureRecorder(),
+        paint = Paint()..color = Colors.white;
+    final canvas = Canvas(recorder);
+    final shape = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(5, 5, 70, 65),
+          const Radius.circular(10),
+        ),
+      )
+      ..moveTo(28, 69)
+      ..lineTo(40, 87)
+      ..lineTo(52, 69)
+      ..close();
+    canvas.drawShadow(shape, Colors.black, 3, true);
+    canvas.drawPath(shape, paint);
+    canvas.drawPath(
+      shape,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3,
+    );
+    if (kind == 'finish') {
+      for (var x = 0; x < 4; x++) {
+        for (var y = 0; y < 4; y++) {
+          if ((x + y).isEven) {
+            canvas.drawRect(
+              Rect.fromLTWH(23 + x * 9, 18 + y * 9, 9, 9),
+              Paint()..color = color,
+            );
+          }
+        }
+      }
+      canvas.drawLine(
+        const Offset(21, 17),
+        const Offset(21, 59),
+        Paint()
+          ..color = color
+          ..strokeWidth = 3,
+      );
+    } else if (kind == 'start') {
+      canvas.drawCircle(
+        const Offset(40, 36),
+        21,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3,
+      );
+      canvas.drawPath(
+        Path()
+          ..moveTo(34, 23)
+          ..lineTo(53, 36)
+          ..lineTo(34, 49)
+          ..close(),
+        Paint()..color = color,
+      );
+    } else {
+      final text = TextPainter(
+        text: TextSpan(
+          text: kind,
+          style: TextStyle(
+            fontSize: 38,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      text.paint(canvas, Offset((80 - text.width) / 2, 12));
+    }
+    final picture = recorder.endRecording(),
+        image = await picture.toImage(80, 90);
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    picture.dispose();
+    if (!mounted || generation != historyGeneration || bytes == null) return;
+    final title = kind == 'start'
+        ? context.tr('history_start')
+        : kind == 'finish'
+        ? context.tr('history_finish')
+        : context.tr('history_parking');
+    setState(
+      () => historyPins[id] = Marker(
+        markerId: MarkerId('history-$id'),
+        position: point,
+        anchor: const Offset(.5, .98),
+        icon: BitmapDescriptor.bytes(
+          bytes.buffer.asUint8List(),
+          width: 40,
+          height: 45,
+        ),
+        infoWindow: InfoWindow(title: title, snippet: address),
+      ),
+    );
+  }
+
+  void _showHistoryPlayback(VehicleTripData trip, double progress) {
+    final path = trip.coordinates
+        .map((p) => LatLng(p.latitude, p.longitude))
+        .toList();
+    if (path.isEmpty || historyVehicle == null) return;
+    setState(
+      () => historyReplay = Marker(
+        markerId: const MarkerId('history-replay'),
+        position: _positionAlongPath(path, progress),
+        icon:
+            markerIcons[_VehicleMarkerState.moving] ??
+            BitmapDescriptor.defaultMarker,
+        anchor: const Offset(.5, .5),
+        zIndexInt: 100,
+      ),
+    );
   }
 
   Future<void> _fitVehicles(List<VehicleData> vehicles) async {
@@ -990,7 +1360,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           southwest: LatLng(south, west),
           northeast: LatLng(north, east),
         ),
-        72,
+        historyVehicle == null ? 72 : 48,
       ),
     );
   }

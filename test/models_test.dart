@@ -159,6 +159,7 @@ void main() {
         'obd_can': {
           'rpm': 1800,
           'engine_temperature_c': 84,
+          'fuel_level_liters': 70,
           'states': {
             'ignition_on': true,
             'engine_running': true,
@@ -211,6 +212,7 @@ void main() {
     expect(data.gsm?.signalPercent, 80);
     expect(data.diagnostic?.satellites, 10);
     expect(data.obdCan?.rpm, 1800);
+    expect(data.obdCan?.fuelLevelLiters, 70);
     expect(data.obdCan?.hasData, isTrue);
     expect(data.obdCan?.states.ignitionOn, isTrue);
     expect(data.obdCan?.states.engineRunning, isTrue);

@@ -952,7 +952,9 @@ class _VehicleDetailsContent extends StatelessWidget {
                   _DetailLine(
                     icon: Icons.local_gas_station_outlined,
                     label: context.tr('fuel_level'),
-                    value: _percent(obd.fuelLevelPercent),
+                    value: obd.fuelLevelLiters == null
+                        ? _percent(obd.fuelLevelPercent)
+                        : '${_number(obd.fuelLevelLiters)} L',
                   ),
                   _DetailLine(
                     icon: Icons.warning_amber_outlined,

@@ -468,11 +468,13 @@ class ApiClient {
   Future<VehicleTripsData> vehicleTrips(
     int vehicleId, {
     String period = 'today',
+    String? startDate,
+    String? endDate,
   }) async {
     final result = await _authorized(
       'GET',
       '/vehicles/$vehicleId/trips',
-      query: {'period': period},
+      query: {'period': period, 'start_date': ?startDate, 'end_date': ?endDate},
     );
     return VehicleTripsData.fromMap(mapOf(result.body['data']));
   }
