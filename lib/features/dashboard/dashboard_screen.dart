@@ -5,6 +5,7 @@ import '../../core/models/app_models.dart';
 import '../../core/session/session_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/ui_components.dart';
+import '../../shared/widgets/app_update_banner.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({
@@ -37,6 +38,7 @@ class DashboardScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
             sliver: SliverList.list(
               children: [
+                const AppUpdateBanner(),
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/models/app_models.dart';
 import '../../core/theme/app_theme.dart';
+import 'fuel_level_badge.dart';
+import 'vehicle_marker_style.dart';
 
 class ScreenTitle extends StatelessWidget {
   const ScreenTitle({
@@ -429,7 +431,7 @@ class CorporateVehicleRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(9),
                 ),
                 child: Icon(
-                  Icons.directions_car_filled_outlined,
+                  vehicleMarkerIcon(vehicle),
                   color: statusColor,
                   size: 19,
                 ),
@@ -514,6 +516,10 @@ class CorporateVehicleRow extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (vehicle.fuel != null) ...[
+                      const SizedBox(height: 7),
+                      FuelLevelBadge(fuel: vehicle.fuel!),
+                    ],
                   ],
                 ),
               ),
@@ -528,7 +534,7 @@ class CorporateVehicleRow extends StatelessWidget {
 (Color, String) _vehicleStatus(BuildContext context, VehicleData vehicle) {
   return switch (vehicle) {
     VehicleData(isMoving: true) => (
-      const Color(0xFF0284C7),
+      const Color(0xFF10B981),
       context.tr('moving_now'),
     ),
     VehicleData(isParking: true) => (
@@ -548,7 +554,7 @@ class CorporateVehicleRow extends StatelessWidget {
       context.tr('inactive'),
     ),
     VehicleData(isOnline: true) => (AppTheme.success, context.tr('online')),
-    _ => (AppTheme.warning, context.tr('offline')),
+    _ => (const Color(0xFFEF4444), context.tr('offline')),
   };
 }
 

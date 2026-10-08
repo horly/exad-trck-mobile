@@ -2,7 +2,7 @@
 
 ## État actuel
 
-Le build Android **1.0.0+43** du 8 octobre 2026 place l'historique en haut de la carte, y compris lorsqu'il est réduit, et adapte le cadrage à l'espace visible en bas. Artefact signé : `build/app/outputs/bundle/release/EXAD-Tracking-1.0.0+43.aab`. Notes françaises fournies à côté du bundle. Vérifié sur l'émulateur ; prêt à importer dans Google Play, aucune publication effectuée.
+Le build Android **1.0.0+46** du 8 octobre 2026 aligne les couleurs des compteurs du panneau cartographique sur les marqueurs : en ligne et déplacement en vert, hors ligne en rouge, parking en bleu. Il conserve le zoom rapproché du build 45. Artefact signé : `build/app/outputs/bundle/release/EXAD-Tracking-1.0.0+46.aab`. Installé et lancé sur Pixel 9 Pro, données conservées. Notes françaises fournies à côté du bundle ; aucune publication Play Store effectuée.
 
 La configuration `release` utilise `android/key.properties`. L’option explicite `EXAD_ANDROID_LEGACY_SIGNING=1` est réservée aux APK internes compatibles avec les anciennes installations ; elle doit être absente ou à `0` pour Google Play. Ne jamais publier un AAB signé avec le certificat de développement.
 
@@ -15,11 +15,11 @@ Les étapes Apple restent distinctes : initialisation Maps iOS, identifiants, ce
 La version se trouve dans `pubspec.yaml` :
 
 ```yaml
-version: 1.0.0+39
+version: 1.0.0+46
 ```
 
 - `1.0.0` devient `versionName` Android et `CFBundleShortVersionString` iOS.
-- `39` devient `versionCode` Android et `CFBundleVersion` iOS.
+- `46` devient `versionCode` Android et `CFBundleVersion` iOS.
 
 À chaque livraison :
 
@@ -217,3 +217,43 @@ Bundle signé : D:/App/Codex/exad-tracking-mobile/build/app/outputs/bundle/relea
 Taille : 47267963 octets ; SHA-256 : cb747df744dcc1be55d5db789f196cd97bfb21815f12e222e6942364811dbef6.
 Notes françaises : build/app/outputs/bundle/release/EXAD-Tracking-1.0.0+43-notes-fr.txt.
 Sources avant/après, journaux, reçu et captures : DASHCAM/analysis/mobile-history-top-20261008/. EXAD Tracking web/API et EXADCAM non modifiés ; aucun déploiement serveur dans ce lot.
+
+## 8 octobre 2026 — Couleurs mobile, cadrage, carburant et mise à jour Play Store
+
+Les marqueurs et les icônes des listes/barre sélectionnée suivent la palette demandée : hors ligne rouge #EF4444, déplacement flèche verte #10B981, parking bleu #22A7DF. Le carburant apparaît dans les lignes de véhicules, les résultats du filtre cartographique et la première ligne de la barre sélectionnée. Le format compact privilégie les litres, sinon le pourcentage ; son infobulle et sa sémantique donnent les deux valeurs si disponibles. La barre reste haute de 70 px et conserve ses métriques GPS/réseau/batterie/vitesse ainsi que l'ancrage supérieur de l'historique.
+
+Cadrage web : zoom par défaut 12, sélection à 17,5 sur Google Maps (zoom fractionnaire activé), ajustement de flotte avec marge 48 px. Mapbox garde la réserve de 430 px pour le panneau, marge 48 px sur les autres côtés et zoom maximal d'ajustement 17,5. Les limites continuent à contenir toute la flotte sélectionnée. Scripts versionnés map-closer-20261008.
+
+Mobile : zoom initial 16,5, sélection et centrage d'un véhicule à 17,5 ; marge de la flotte réduite de 72 à 40 px. Le cadrage des trajets historiques est conservé.
+
+Les tableaux de bord client et superadmin vérifient la disponibilité d'une mise à jour via Google Play AppUpdateManager (dépendance native app-update 2.1.0), au chargement, au retour dans l'application et toutes les 15 minutes pendant qu'elle est active. La bannière « Nouvelle version disponible » s'affiche uniquement si Google Play signale UPDATE_AVAILABLE pour ce compte/appareil. Le bouton « Mettre à jour » ouvre la fiche de l'application dans le Play Store, avec repli sur la fiche web officielle si l'application Store est absente. Aucune installation automatique. Les erreurs, installations non éligibles et indisponibilités réseau masquent la bannière sans bloquer le tableau de bord ; l'échec d'ouverture du Store reste explicite et réessayable. Les messages sont traduits FR/EN.
+
+Ce contrôle est indépendant du catalogue APK de l'API : générer un AAB local ne signifie pas qu'une version soit disponible sur Google Play. Source native : https://developer.android.com/guide/playcore/in-app-updates/kotlin-java?hl=en. La disponibilité réelle pour un utilisateur doit être vérifiée avec une installation issue de Google Play et un compte éligible ; les tests locaux simulent le canal natif.
+
+Validation : 52 tests Flutter réussis ; analyse Flutter sans erreur ni avertissement. Les tests couvrent notamment zéro/absence/valeurs invalides de carburant, palette, barre de 320 px sans dépassement, hauteur 70 px, disponibilité/reprise/échec du Store et rendu de composants avec données fictives. 37 tests PHP / 492 assertions et 22 tests Node réussis. Aucun véhicule réel ni notification réelle utilisé pour les tests. Contrôle Google Play simulé, sans publication sur le Store.
+
+Bundle signé 1.0.0+44 : build/app/outputs/bundle/release/EXAD-Tracking-1.0.0+44.aab (47306519 octets), SHA-256 2d95fbca4894e1989a78d8400f8b2eaae82e3cf1ea5dfc60a7331ba3ee9950c8. Bundletool valide le bundle et son versionCode 44 ; certificat d'importation identique au build 39 de référence, ELF et configuration du bundle compatibles avec l'alignement 16 Ko. API de production explicitement définie au build. Notes FR fournies dans EXAD-Tracking-1.0.0+44-notes-fr.txt à côté du bundle. Build réalisé sur les sources locales modifiées, aucun nouveau commit dans ce lot. Aucun import ni publication Play Store effectué.
+
+Déployé à 2026-10-08T15:17:41.743674+00:00 : six fichiers applicatifs, empreintes avant/après vérifiées et vues recompilées. Sauvegarde /var/backups/api-tracking-mobile-enhancements-20261008-151738.tar.gz, SHA-256 f25f10d2a6929b9656d3d49b87dc75efe36b872265d259a32a5597ff6f02380a. Login, santé et scripts publics HTTP 200, empreintes des ressources conformes ; services actifs et PID du listener GPS inchangé. Aucune migration ni commande aux équipements. Reçu : DASHCAM/analysis/tracking-mobile-enhancements-20261008/api-receipt.json.
+
+## 8 octobre 2026 — Zoom mobile rapproché, build 45
+
+Demande : rapprocher encore légèrement la carte mobile après vérification du build 44 sur l’émulateur. Zoom initial 16,5 → 17,5 ; sélection et centrage d’un seul véhicule 17,5 → 18. La marge du cadrage de flotte passe de 40 à 24 px et le centrage sur la position de l’utilisateur utilise aussi 17,5. L’ajustement de flotte contient toujours tous ses véhicules et le cadrage des trajets reste inchangé.
+
+Validation : analyse Flutter sans problème ; compilation Android release réussie. Bundletool, versionCode 45, signature d’importation et alignement des bibliothèques 16 Ko vérifiés. Installation de l’APK dérivé de ce bundle avec le certificat interne existant sur emulator-5554 (Pixel 9 Pro), sans désinstallation ni effacement. Version 45 et activité au premier plan vérifiées. Onglet Carte ouvert automatiquement.
+
+Bundle : D:\App\Codex\exad-tracking-mobile\build\app\outputs\bundle\release\EXAD-Tracking-1.0.0+45.aab ; 47306530 octets ; SHA-256 46d71057046cfbb6b7addde36cf7710fc8096bb4abd6ded9836ddb4fb10a27e9. Notes EXAD-Tracking-1.0.0+45-notes-fr.txt fournies. La version émulateur utilise la signature interne ; l’AAB conserve la signature Play Store. Aucun déploiement web/API ni publication Store pour cet ajustement. Sources locales modifiées, pas de nouveau commit. Reçus : DASHCAM/analysis/mobile-zoom-20261008/.
+
+## 8 octobre 2026 — Couleurs des compteurs mobiles, build 46
+
+Demande : respecter aussi la règle de couleur dans les quatre compteurs au-dessus de la recherche cartographique. Les appels à FleetStatusIcon utilisent désormais #10B981 pour En ligne et En mouvement, #EF4444 pour Hors ligne et #22A7DF pour Parking. La flèche de déplacement est conservée et son ancien violet est supprimé. Les fonds pastel utilisent automatiquement la couleur de chaque icône. Chiffres, libellés, disposition et calcul des compteurs conservés.
+
+Validation : analyse Flutter sans problème et build release réussi. Bundletool valide le bundle, versionCode 46 confirmé, certificat d’importation inchangé et alignement natif 16 Ko vérifié. APK dérivé du bundle avec le certificat interne, installé en remplacement sur Pixel 9 Pro sans désinstallation. Application vérifiée au premier plan. Panneau des filtres ouvert, quatre compteurs détectés.
+
+AAB : D:\App\Codex\exad-tracking-mobile\build\app\outputs\bundle\release\EXAD-Tracking-1.0.0+46.aab ; 47306471 octets ; SHA-256 4eaaef5b5980bc369328f4386d57035ca199f4ef45b8b068117abd1be1ec9a96. Notes EXAD-Tracking-1.0.0+46-notes-fr.txt fournies. Aucun déploiement web/API, commit ni publication Play Store. Reçus : DASHCAM/analysis/mobile-counter-colors-20261008/.
+
+### Notes cumulées du build 46 depuis le build 43
+
+Les notes de publication du build 46 couvrent tous les ajouts mobiles des builds 44 à 46 : zoom et cadrage, couleurs des marqueurs/listes/barre/compteurs, carburant des équipements compatibles et bannière de mise à jour ouvrant le Play Store. Textes français et anglais pris en charge.
+
+Texte court : EXAD-Tracking-1.0.0+46-notes-fr.txt (499 caractères). Détail complet : EXAD-Tracking-1.0.0+46-notes-completes-fr.txt. Les deux fichiers se trouvent à côté du bundle dans build/app/outputs/bundle/release/. Copies versionnées : [notes Google Play](release-notes/1.0.0+46.fr.txt) et [notes complètes](release-notes/1.0.0+46.full.fr.txt). Cette mise à jour concerne uniquement les notes ; le binaire signé du build 46 reste identique.

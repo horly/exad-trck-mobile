@@ -475,6 +475,46 @@ class BootstrapData {
   }
 }
 
+/// Validated fuel values supplied only for supported equipment by the API.
+class VehicleFuelData {
+  const VehicleFuelData({this.liters, this.percent});
+
+  final double? liters;
+  final double? percent;
+
+  static VehicleFuelData? parse(dynamic value) {
+    if (value is! Map) return null;
+    double? number(dynamic input, {double? maximum}) {
+      final result = doubleOf(input);
+      return result != null &&
+              result.isFinite &&
+              result >= 0 &&
+              (maximum == null || result <= maximum)
+          ? result
+          : null;
+    }
+
+    return VehicleFuelData(
+      liters: number(value['liters']),
+      percent: number(value['percent'], maximum: 100),
+    );
+  }
+
+  String label(String language, {bool compact = false}) {
+    String format(double value) {
+      final text = value.toStringAsFixed(1);
+      return language == 'fr' ? text.replaceAll('.', ',') : text;
+    }
+
+    final values = <String>[
+      if (liters != null) '${format(liters!)} L',
+      if (percent != null && (!compact || liters == null))
+        '${format(percent!)} %',
+    ];
+    return values.isEmpty ? '—' : values.join(' · ');
+  }
+}
+
 class VehicleData {
   const VehicleData({
     required this.id,
@@ -489,6 +529,7 @@ class VehicleData {
     this.isParking = false,
     this.isStationaryRunning = false,
     this.gpsStatus = 'unavailable',
+    this.fuel,
     this.gpsQualityPercent,
     this.networkSignalPercent,
     this.batteryLevelPercent,
@@ -528,6 +569,7 @@ class VehicleData {
   final bool isParking;
   final bool isStationaryRunning;
   final String gpsStatus;
+  final VehicleFuelData? fuel;
   final int? gpsQualityPercent;
   final int? networkSignalPercent;
   final int? batteryLevelPercent;
@@ -576,6 +618,7 @@ class VehicleData {
           tracking['online'] == true &&
           tracking['ignition'] == true &&
           tracking['movement'] != true,
+      fuel: VehicleFuelData.parse(tracking['fuel']),
       gpsStatus: tracking['gps_status']?.toString() ?? 'unavailable',
       gpsQualityPercent: tracking['gps_quality_percent'] == null
           ? null
@@ -628,6 +671,7 @@ class VehicleData {
       isMoving: properties['is_moving'] == true,
       isParking: properties['is_parking'] == true,
       isStationaryRunning: properties['is_stationary_running'] == true,
+      fuel: VehicleFuelData.parse(properties['fuel']),
       gpsStatus: properties['gps_status']?.toString() ?? 'unavailable',
       gpsQualityPercent: properties['gps_quality_percent'] == null
           ? null

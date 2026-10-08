@@ -205,3 +205,13 @@ Pour toute évolution API :
 4. vérifier les comptes client et superadmin ;
 5. tester les réponses sans données optionnelles ;
 6. ne jamais exposer l’IMEI ou des secrets techniques si l’écran n’en a pas besoin.
+
+## 8 octobre 2026 — Couleurs mobile, cadrage, carburant et mise à jour Play Store
+
+Le contrat mobile /v1 ajoute un objet optionnel fuel contenant uniquement liters et percent dans les propriétés GeoJSON de /map/vehicles et dans tracking des véhicules (liste, tableau de bord, détail). Ces deux mesures numériques peuvent être nulles. La projection reprend VehicleFuelLevelService et le cache validé par l'ingestion ; aucun recalcul à partir d'un paquet brut ni lecture supplémentaire des positions.
+
+Les modèles Teltonika FMC125 et FMB140 suivent la politique carburant existante. FMB003 reste exclu, même si son cache contient une valeur. Si aucune mesure et aucune calibration ne sont présentes, fuel est omis ; une calibration activée sans mesure produit deux valeurs nulles, affichées « — ». Zéro reste une mesure valable. Les réglages de calibration et l'identité technique du traceur ne sont pas exposés aux clients ; les contrôles de flotte restent appliqués.
+
+Les tableaux de bord client et superadmin vérifient la disponibilité d'une mise à jour via Google Play AppUpdateManager (dépendance native app-update 2.1.0), au chargement, au retour dans l'application et toutes les 15 minutes pendant qu'elle est active. La bannière « Nouvelle version disponible » s'affiche uniquement si Google Play signale UPDATE_AVAILABLE pour ce compte/appareil. Le bouton « Mettre à jour » ouvre la fiche de l'application dans le Play Store, avec repli sur la fiche web officielle si l'application Store est absente. Aucune installation automatique. Les erreurs, installations non éligibles et indisponibilités réseau masquent la bannière sans bloquer le tableau de bord ; l'échec d'ouverture du Store reste explicite et réessayable. Les messages sont traduits FR/EN.
+
+Ce contrôle est indépendant du catalogue APK de l'API : générer un AAB local ne signifie pas qu'une version soit disponible sur Google Play. Source native : https://developer.android.com/guide/playcore/in-app-updates/kotlin-java?hl=en. La disponibilité réelle pour un utilisateur doit être vérifiée avec une installation issue de Google Play et un compte éligible ; les tests locaux simulent le canal natif.

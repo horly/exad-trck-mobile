@@ -1,0 +1,28 @@
+EXAD Tracking — version 1.0.0, build 46
+Nouveautés et corrections depuis le build 43 (builds 44 à 46)
+
+Carte et zoom
+- Carte plus proche dès l’ouverture.
+- Zoom renforcé à la sélection d’un véhicule et lors du recentrage.
+- Recentrage sur votre position plus proche.
+- Marges réduites pour mieux afficher la flotte sur l’écran tout en gardant tous les véhicules dans le cadrage.
+
+Couleurs des véhicules
+- Véhicules hors ligne en rouge.
+- Véhicules en mouvement avec une flèche verte.
+- Parking en bleu et statut en ligne en vert.
+- Règle appliquée aux marqueurs, aux icônes des listes, à la barre du véhicule sélectionné et aux compteurs du panneau des filtres ; l’ancien violet du compteur « En mouvement » est remplacé par le vert.
+
+Niveau de carburant
+- Affichage dans les listes de véhicules, les résultats des filtres et la barre du véhicule sélectionné.
+- Mesures en litres et/ou en pourcentage lorsqu’elles sont disponibles ; présentation compacte dans la barre supérieure.
+- Affichage réservé aux équipements pris en charge : FMC125 et FMB140 selon leurs mesures ou leur configuration. FMB003 exclu.
+- Une valeur de zéro reste affichée ; une donnée manquante n’est pas remplacée par un faux niveau.
+- Hauteur de la barre supérieure conservée pour garder l’historique à sa place.
+
+Mises à jour de l’application
+- Message « Nouvelle version disponible » sur les tableaux de bord client et superadmin lorsqu’une mise à jour est proposée par Google Play.
+- Bouton « Mettre à jour » ouvrant directement la fiche de l’application sur le Play Store.
+- Vérification au chargement, au retour dans l’application et périodiquement pendant son utilisation.
+- Tableau de bord utilisable même lorsque la vérification est indisponible ; message explicite si le Play Store ne peut pas être ouvert.
+- Nouveaux messages disponibles en français et en anglais.

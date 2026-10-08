@@ -9,10 +9,12 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../../core/localization/app_localizations.dart';
 import '../../core/models/app_models.dart';
 import '../../core/session/session_controller.dart';
-import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/fleet_status_icon.dart';
 import '../../shared/widgets/ui_components.dart';
 import 'map_vehicle_sheets.dart';
+import 'selected_vehicle_strip.dart';
+import '../../shared/widgets/fuel_level_badge.dart';
+import '../../shared/widgets/vehicle_marker_style.dart';
 import 'live_position_motion.dart';
 import 'trip_history_panel.dart';
 
@@ -54,7 +56,8 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
   static const liveRefreshInterval = Duration(seconds: 10);
   static const selectedTelemetryRefreshInterval = Duration(minutes: 1);
   static const markerAnimationDuration = Duration(seconds: 5);
-  static const initialStreetZoom = 15.5;
+  static const initialStreetZoom = 17.5;
+  static const selectedVehicleZoom = 18.0;
 
   final searchController = TextEditingController();
   GoogleMapController? mapController;
@@ -825,7 +828,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
             left: 0,
             right: 0,
             top: 58,
-            child: _SelectedVehicleTopStrip(
+            child: SelectedVehicleTopStrip(
               vehicle: selectedVehicle!,
               details: selectedVehicleDetails?.vehicle.id == selectedVehicle!.id
                   ? selectedVehicleDetails
@@ -1003,24 +1006,24 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
 
   Color _markerColor(_VehicleMarkerState state) {
     return switch (state) {
-      _VehicleMarkerState.moving => const Color(0xFF229BD8),
+      _VehicleMarkerState.moving => const Color(0xFF10B981),
       _VehicleMarkerState.parking => const Color(0xFF22A7DF),
       _VehicleMarkerState.stationaryRunning => const Color(0xFF229BD8),
       _VehicleMarkerState.maintenance => const Color(0xFF8B5CF6),
       _VehicleMarkerState.inactive => const Color(0xFFEF4444),
-      _VehicleMarkerState.offline => const Color(0xFFF59E0B),
+      _VehicleMarkerState.offline => const Color(0xFFEF4444),
       _VehicleMarkerState.online => const Color(0xFF10B981),
     };
   }
 
   double _fallbackMarkerHue(_VehicleMarkerState state) {
     return switch (state) {
-      _VehicleMarkerState.moving => BitmapDescriptor.hueAzure,
+      _VehicleMarkerState.moving => BitmapDescriptor.hueGreen,
       _VehicleMarkerState.parking => BitmapDescriptor.hueCyan,
       _VehicleMarkerState.stationaryRunning => BitmapDescriptor.hueBlue,
       _VehicleMarkerState.maintenance => BitmapDescriptor.hueViolet,
       _VehicleMarkerState.inactive => BitmapDescriptor.hueRed,
-      _VehicleMarkerState.offline => BitmapDescriptor.hueOrange,
+      _VehicleMarkerState.offline => BitmapDescriptor.hueRed,
       _VehicleMarkerState.online => BitmapDescriptor.hueGreen,
     };
   }
@@ -1048,7 +1051,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     unawaited(
       mapController?.moveCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: latestPosition, zoom: 17),
+          CameraPosition(target: latestPosition, zoom: selectedVehicleZoom),
         ),
       ),
     );
@@ -1339,7 +1342,10 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
     if (controller == null || points.isEmpty) return;
     if (points.length == 1) {
       await controller.animateCamera(
-        CameraUpdate.newLatLngZoom(points.first, 15),
+        CameraUpdate.newLatLngZoom(
+          points.first,
+          historyVehicle == null ? selectedVehicleZoom : 15,
+        ),
       );
       return;
     }
@@ -1360,7 +1366,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
           southwest: LatLng(south, west),
           northeast: LatLng(north, east),
         ),
-        historyVehicle == null ? 72 : 48,
+        historyVehicle == null ? 24 : 48,
       ),
     );
   }
@@ -1408,7 +1414,7 @@ class _MapScreenState extends State<MapScreen> with WidgetsBindingObserver {
       await mapController?.animateCamera(
         CameraUpdate.newLatLngZoom(
           LatLng(position.latitude, position.longitude),
-          16,
+          initialStreetZoom,
         ),
       );
     } catch (_) {
@@ -1608,7 +1614,7 @@ class _VehicleMapPanel extends StatelessWidget {
                 Expanded(
                   child: _VehicleStatusTotal(
                     icon: FleetStatusSymbol.online,
-                    color: const Color(0xFF16A368),
+                    color: const Color(0xFF10B981),
                     count: allVehicles
                         .where((vehicle) => vehicle.isOnline)
                         .length,
@@ -1619,7 +1625,7 @@ class _VehicleMapPanel extends StatelessWidget {
                 Expanded(
                   child: _VehicleStatusTotal(
                     icon: FleetStatusSymbol.offline,
-                    color: const Color(0xFFDC5261),
+                    color: const Color(0xFFEF4444),
                     count: allVehicles
                         .where((vehicle) => !vehicle.isOnline)
                         .length,
@@ -1630,7 +1636,7 @@ class _VehicleMapPanel extends StatelessWidget {
                 Expanded(
                   child: _VehicleStatusTotal(
                     icon: FleetStatusSymbol.moving,
-                    color: const Color(0xFF6854C7),
+                    color: const Color(0xFF10B981),
                     count: allVehicles
                         .where((vehicle) => vehicle.isMoving)
                         .length,
@@ -1641,7 +1647,7 @@ class _VehicleMapPanel extends StatelessWidget {
                 Expanded(
                   child: _VehicleStatusTotal(
                     icon: FleetStatusSymbol.parked,
-                    color: const Color(0xFF229BD8),
+                    color: const Color(0xFF22A7DF),
                     count: allVehicles
                         .where((vehicle) => vehicle.isParking)
                         .length,
@@ -1951,11 +1957,7 @@ class _MapDrawerVehicleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final statusColor = vehicle.isMoving
-        ? const Color(0xFF229BD8)
-        : vehicle.isOnline
-        ? const Color(0xFF22C55E)
-        : const Color(0xFFF59E0B);
+    final statusColor = vehicleMarkerColor(vehicle);
 
     return Material(
       color: selected
@@ -1985,7 +1987,7 @@ class _MapDrawerVehicleRow extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
-                  Icons.directions_car_filled_outlined,
+                  vehicleMarkerIcon(vehicle),
                   size: 19,
                   color: statusColor,
                 ),
@@ -2015,6 +2017,10 @@ class _MapDrawerVehicleRow extends StatelessWidget {
                         fontSize: 9.5,
                       ),
                     ),
+                    if (vehicle.fuel != null) ...[
+                      const SizedBox(height: 5),
+                      FuelLevelBadge(fuel: vehicle.fuel!),
+                    ],
                   ],
                 ),
               ),
@@ -2046,238 +2052,6 @@ class _MapDrawerVehicleRow extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _SelectedVehicleTopStrip extends StatelessWidget {
-  const _SelectedVehicleTopStrip({required this.vehicle, this.details});
-
-  final VehicleData vehicle;
-  final VehicleDetailData? details;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final gpsQualityPercent =
-        vehicle.gpsQualityPercent ?? details?.location?.gpsQualityPercent;
-    final networkSignalPercent =
-        vehicle.networkSignalPercent ?? details?.gsm?.signalPercent;
-    final batteryLevelPercent =
-        vehicle.batteryLevelPercent ??
-        details?.power?.effectiveBatteryLevelPercent;
-    final gpsAvailable =
-        vehicle.hasAvailableGps ||
-        (vehicle.isOnline && (gpsQualityPercent ?? 0) > 0);
-    final isParking = vehicle.isParking || details?.location?.ignition == false;
-    final gpsColor = gpsAvailable ? AppTheme.success : AppTheme.danger;
-    final networkColor = _levelColor(networkSignalPercent);
-    final batteryColor = _levelColor(batteryLevelPercent);
-
-    return Material(
-      color: scheme.surface,
-      elevation: 3,
-      shadowColor: const Color(0x260F172A),
-      child: SizedBox(
-        height: 70,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.navigation_rounded,
-                    size: 18,
-                    color: vehicle.isMoving
-                        ? scheme.secondary
-                        : scheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      vehicle.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: scheme.onSurface,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _lastSignalLabel(context),
-                    style: TextStyle(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              Row(
-                children: [
-                  Expanded(
-                    child: _TrackingMetric(
-                      icon: gpsAvailable
-                          ? Icons.gps_fixed_rounded
-                          : Icons.gps_off_rounded,
-                      value: context.tr(
-                        gpsAvailable ? 'gps_active' : 'gps_unavailable',
-                      ),
-                      color: gpsColor,
-                    ),
-                  ),
-                  Expanded(
-                    child: _TrackingMetric(
-                      icon: vehicle.isOnline
-                          ? Icons.signal_cellular_alt_rounded
-                          : Icons.signal_cellular_off_rounded,
-                      value: networkSignalPercent != null
-                          ? _percent(networkSignalPercent)
-                          : vehicle.isOnline
-                          ? context.tr('connected')
-                          : context.tr('not_available_short'),
-                      color: networkSignalPercent == null && vehicle.isOnline
-                          ? AppTheme.success
-                          : networkColor,
-                    ),
-                  ),
-                  Expanded(
-                    child: _TrackingMetric(
-                      icon: Icons.battery_5_bar_rounded,
-                      value: batteryLevelPercent == null
-                          ? context.tr('not_available_short')
-                          : _percent(batteryLevelPercent),
-                      color: batteryColor,
-                    ),
-                  ),
-                  Expanded(
-                    child: _TrackingMetric(
-                      icon: isParking
-                          ? Icons.local_parking_rounded
-                          : Icons.speed_rounded,
-                      value: _movementValue(context),
-                      color: scheme.onSurfaceVariant,
-                      circledIcon: isParking,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _percent(int? value) {
-    return value == null ? '--%' : '${value.clamp(0, 100)}%';
-  }
-
-  Color _levelColor(int? value) {
-    if (value == null) return AppTheme.muted;
-    if (value >= 50) return AppTheme.success;
-    if (value >= 20) return AppTheme.warning;
-    return AppTheme.danger;
-  }
-
-  String _movementValue(BuildContext context) {
-    final isParking = vehicle.isParking || details?.location?.ignition == false;
-    if (!isParking) return '${vehicle.speed} km/h';
-
-    final startedAt = DateTime.tryParse(
-      details?.location?.parkingStartedAt ?? '',
-    )?.toLocal();
-    if (startedAt == null) return context.tr('parking');
-
-    final elapsed = DateTime.now().difference(startedAt);
-    final minutes = elapsed.isNegative ? 0 : elapsed.inMinutes;
-    if (minutes < 1) return '< 1min';
-    if (minutes < 60) return '${minutes}min';
-
-    final hours = minutes ~/ 60;
-    final remainingMinutes = minutes % 60;
-    if (hours < 24) {
-      return '${hours}h${remainingMinutes.toString().padLeft(2, '0')}min';
-    }
-
-    final days = hours ~/ 24;
-    final remainingHours = hours % 24;
-    return '${days}j ${remainingHours}h${remainingMinutes.toString().padLeft(2, '0')}min';
-  }
-
-  String _lastSignalLabel(BuildContext context) {
-    final parsed = DateTime.tryParse(vehicle.lastSignalAt ?? '')?.toLocal();
-    if (parsed == null) return '';
-    final difference = DateTime.now().difference(parsed);
-    if (difference.isNegative || difference.inSeconds < 5) {
-      return context.tr('signal_just_now');
-    }
-    if (difference.inMinutes < 1) {
-      return context.trFormat('signal_seconds_ago', {
-        'count': difference.inSeconds,
-      });
-    }
-    if (difference.inHours < 1) {
-      return context.trFormat('signal_minutes_ago', {
-        'count': difference.inMinutes,
-      });
-    }
-    return context.trFormat('signal_hours_ago', {'count': difference.inHours});
-  }
-}
-
-class _TrackingMetric extends StatelessWidget {
-  const _TrackingMetric({
-    required this.icon,
-    required this.value,
-    required this.color,
-    this.circledIcon = false,
-  });
-
-  final IconData icon;
-  final String value;
-  final Color color;
-  final bool circledIcon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        if (circledIcon)
-          Container(
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: color, width: 1.4),
-            ),
-            alignment: Alignment.center,
-            child: Icon(icon, size: 12, color: color),
-          )
-        else
-          Icon(icon, size: 17, color: color),
-        const SizedBox(width: 4),
-        Flexible(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              maxLines: 1,
-              style: TextStyle(
-                color: color,
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

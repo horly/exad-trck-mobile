@@ -1,0 +1,5 @@
+- Zoom rapproché à l’ouverture, à la sélection et au recentrage, avec un meilleur cadrage de la flotte.
+- Couleurs harmonisées sur la carte, les listes et les compteurs : vert en ligne/en mouvement, rouge hors ligne, bleu parking.
+- Carburant en litres et/ou %, dans les listes et la barre du véhicule, pour les équipements compatibles (FMB003 exclu).
+- Message « Nouvelle version disponible » sur le tableau de bord, avec accès au Play Store.
+- Nouveaux messages disponibles en français et anglais.

@@ -6,6 +6,7 @@ import '../../core/session/session_controller.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/exad_logo.dart';
 import '../../shared/widgets/ui_components.dart';
+import '../../shared/widgets/app_update_banner.dart';
 
 class SuperadminDashboardScreen extends StatelessWidget {
   const SuperadminDashboardScreen({
@@ -34,6 +35,7 @@ class SuperadminDashboardScreen extends StatelessWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(18, 18, 18, 28),
         children: [
+          const AppUpdateBanner(),
           Container(
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(

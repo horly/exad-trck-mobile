@@ -1,4 +1,5 @@
 import 'package:exad_tracking_mobile/app.dart';
+import 'package:exad_tracking_mobile/core/updates/app_update_service.dart';
 import 'package:exad_tracking_mobile/core/localization/app_localizations.dart';
 import 'package:exad_tracking_mobile/core/models/app_models.dart';
 import 'package:exad_tracking_mobile/core/session/session_controller.dart';
@@ -12,6 +13,18 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          AppUpdateService.channel,
+          (_) async => {'available': false, 'build': 44},
+        );
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(AppUpdateService.channel, null);
+  });
   testWidgets('affiche la connexion corporate en français', (tester) async {
     await tester.pumpWidget(
       ExadTrackingApp(
